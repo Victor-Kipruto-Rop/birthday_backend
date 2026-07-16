@@ -6,10 +6,10 @@ python-dotenv==1.0.1
 gunicorn==22.0.0
 psycopg2-binary==2.9.9
 redis==5.0.1
-pytest==7.4.3
+pytest==7.4.4
 pytest-cov==4.1.0
-black==23.12.1
-flake8==6.1.0
+black==24.1.1
+flake8==7.0.0
 isort==5.13.2
 bandit==1.7.5
-safety==2.3.5
+safety==3.0.1
