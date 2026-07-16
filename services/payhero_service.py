@@ -49,11 +49,26 @@ def _get_auth_header() -> dict:
     }
 
 
+def _request(method: str, url: str, **kwargs) -> requests.Response:
+    """
+    Perform an HTTP request without retries. Used for one-shot operations
+    like STK Push initiation that should never be automatically repeated.
+    """
+    try:
+        return requests.request(method, url, timeout=_REQUEST_TIMEOUT, **kwargs)
+    except requests.exceptions.RequestException as exc:
+        logger.error("Pay Hero request failed: %s", exc)
+        raise PayHeroError(f"Pay Hero request failed: {exc}")
+
+
 def _request_with_retry(method: str, url: str, **kwargs) -> requests.Response:
     """
     Perform an HTTP request with retry-on-transient-failure behavior.
     Retries on network errors and 5xx responses using exponential backoff.
     Raises PayHeroError if all attempts fail.
+
+    Only used for idempotent operations like status checks that can safely
+    be retried without side effects.
     """
     last_exception: Optional[Exception] = None
 
@@ -89,8 +104,17 @@ def initiate_stk_push(phone: str, amount: float, reference: Optional[str] = None
     """
     Initiate an STK Push payment request via Pay Hero.
 
-    Returns a dict with the transaction reference and Pay Hero's raw
-    response data. Raises PayHeroError on failure.
+    IMPORTANT: This method does NOT retry on network/5xx errors. If the request
+    fails or times out, we don't automatically resend it, because Pay Hero may
+    have already processed the push (sending an M-Pesa prompt to the customer's
+    phone). Retrying could result in a duplicate prompt, confusing the customer.
+
+    If the request fails here, the transaction record is still created in a
+    "pending" state, and the customer can retry or we can poll later via
+    check_payment_status (which safely retries).
+
+    Returns a dict with the transaction reference and Pay Hero's raw response.
+    Raises PayHeroError on failure.
     """
     reference = reference or generate_reference("GIFT")
 
@@ -106,7 +130,7 @@ def initiate_stk_push(phone: str, amount: float, reference: Optional[str] = None
     url = f"{Config.PAYHERO_BASE_URL}/payments"
 
     try:
-        response = _request_with_retry("POST", url, json=payload, headers=_get_auth_header())
+        response = _request("POST", url, json=payload, headers=_get_auth_header())
     except PayHeroError:
         raise
 

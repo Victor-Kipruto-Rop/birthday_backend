@@ -65,6 +65,29 @@ class Config:
     # Base directory for JSON-file storage (see models/storage.py).
     DATA_DIR: str = _get_env("DATA_DIR", default="data")
 
+    # --- Database (optional, replaces JSON if set) ----------------
+    # PostgreSQL URL, e.g. postgresql://user:pass@localhost/birthday_db
+    # If set, all storage goes to PostgreSQL. If not set, falls back to JSON files.
+    DATABASE_URL: str = _get_env("DATABASE_URL", default="")
+
+    # --- Redis (optional, for scaling rate limiter) ----------------
+    # Redis URL for distributed rate limiting, e.g. redis://localhost:6379/0
+    # If set, rate limits are enforced across multiple workers/instances.
+    # If not set, falls back to in-memory (only works with single worker).
+    REDIS_URL: str = _get_env("REDIS_URL", default="")
+
+    # Optional: a full Postgres connection string (e.g. from Supabase).
+    # When set, storage automatically switches to Postgres instead of
+    # local JSON files - required for persistence on Render's free
+    # tier, whose filesystem is wiped on every redeploy/restart.
+    DATABASE_URL: str = _get_env("DATABASE_URL", default="")
+
+    # --- Rate limiting -------------------------------------------------
+    # Optional Redis URL for Flask-Limiter's shared storage backend.
+    # Only needed if running multiple Gunicorn workers/instances; a
+    # single worker works fine with the default in-memory storage.
+    REDIS_URL: str = _get_env("REDIS_URL", default="")
+
     @classmethod
     def validate(cls) -> None:
         """

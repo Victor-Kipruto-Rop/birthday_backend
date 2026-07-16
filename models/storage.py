@@ -1,18 +1,21 @@
 """
 models/storage.py
 ==================
-Data persistence layer.
+Data persistence layer using a repository pattern.
 
-This currently uses simple JSON files on disk, but is deliberately
-structured as a repository pattern (`JSONRepository` base class with
-concrete `WishRepository` / `TransactionRepository` subclasses) so
-that swapping in SQLite or PostgreSQL later only requires writing new
-repository classes with the same public method signatures - no
-changes needed in routes/services that consume them.
+Automatically chooses the storage backend based on config:
+  - If DATABASE_URL is set: PostgreSQL (persistent, scales across workers)
+  - Otherwise: JSON files on disk (ephemeral on Render free tier, but zero setup)
 
-Note: JSON-file storage is fine for a small birthday-site MVP, but is
-not safe for high-concurrency writes. A basic file lock is used to
-reduce (not eliminate) race conditions between concurrent requests.
+The repository pattern (JSONRepository / PostgresRepository base classes with
+concrete WishRepository / TransactionRepository subclasses) means swapping
+backends only requires adding a new repository class — routes and services
+never know or care which backend is in use. All public methods (add, find_all,
+find_by, update_by) are backend-agnostic.
+
+Note: on Render's free tier, local disk storage is wiped on redeploy and
+most restarts. For production persistence, set DATABASE_URL to a PostgreSQL
+database (e.g. Supabase) or pay for Render's persistent disk add-on.
 """
 
 import json
@@ -168,6 +171,164 @@ class TransactionRepository(JSONRepository):
         return self.update_by("reference", reference, updates)
 
 
+# PostgreSQL-backed repository classes (used if DATABASE_URL is configured).
+try:
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
+    _PSYCOPG2_AVAILABLE = True
+except ImportError:
+    _PSYCOPG2_AVAILABLE = False
+
+
+class PostgresRepository:
+    """
+    PostgreSQL-backed repository. Stores records in a PostgreSQL table.
+
+    Subclasses set `table_name` and get full CRUD operations for free,
+    mirroring the JSONRepository interface exactly.
+    """
+
+    table_name: str = "records"
+
+    def __init__(self, connection_string: str):
+        self.connection_string = connection_string
+        self._init_table()
+
+    def _get_connection(self):
+        """Get a fresh database connection for this operation."""
+        return psycopg2.connect(self.connection_string)
+
+    def _init_table(self) -> None:
+        """Create the table if it doesn't exist."""
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(f"""
+                        CREATE TABLE IF NOT EXISTS {self.table_name} (
+                            id SERIAL PRIMARY KEY,
+                            data JSONB NOT NULL,
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        )
+                    """)
+                    conn.commit()
+        except Exception as exc:
+            logger.error("Failed to initialize %s table: %s", self.table_name, exc)
+
+    def add(self, record: dict[str, Any]) -> dict[str, Any]:
+        """Append a new record, stamping it with a created_at timestamp."""
+        record = {**record, "created_at": current_timestamp()}
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute(
+                        f"INSERT INTO {self.table_name} (data) VALUES (%s) RETURNING data",
+                        (json.dumps(record, default=str),),
+                    )
+                    result = cur.fetchone()
+                    conn.commit()
+                    return dict(result["data"]) if result else record
+        except Exception as exc:
+            logger.error("Failed to add record to %s: %s", self.table_name, exc)
+            return record
+
+    def find_all(self) -> list[dict[str, Any]]:
+        """Return every stored record."""
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute(f"SELECT data FROM {self.table_name} ORDER BY created_at DESC")
+                    rows = cur.fetchall()
+                    return [dict(row["data"]) for row in rows]
+        except Exception as exc:
+            logger.error("Failed to fetch records from %s: %s", self.table_name, exc)
+            return []
+
+    def find_by(self, key: str, value: Any) -> Optional[dict[str, Any]]:
+        """Return the first record where record[key] == value, or None."""
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute(
+                        f"SELECT data FROM {self.table_name} WHERE data->>%s = %s LIMIT 1",
+                        (key, str(value)),
+                    )
+                    row = cur.fetchone()
+                    return dict(row["data"]) if row else None
+        except Exception as exc:
+            logger.error("Failed to find record in %s: %s", self.table_name, exc)
+            return None
+
+    def update_by(self, key: str, value: Any, updates: dict[str, Any]) -> Optional[dict[str, Any]]:
+        """Update the first record matching key == value, in place."""
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute(
+                        f"SELECT data FROM {self.table_name} WHERE data->>%s = %s LIMIT 1",
+                        (key, str(value)),
+                    )
+                    row = cur.fetchone()
+                    if not row:
+                        return None
+
+                    record = dict(row["data"])
+                    record.update(updates)
+                    record["updated_at"] = current_timestamp()
+
+                    cur.execute(
+                        f"UPDATE {self.table_name} SET data = %s WHERE data->>%s = %s RETURNING data",
+                        (json.dumps(record, default=str), key, str(value)),
+                    )
+                    result = cur.fetchone()
+                    conn.commit()
+                    return dict(result["data"]) if result else record
+        except Exception as exc:
+            logger.error("Failed to update record in %s: %s", self.table_name, exc)
+            return None
+
+
+class PostgresWishRepository(PostgresRepository):
+    """Stores birthday wishes in PostgreSQL."""
+
+    table_name = "wishes"
+
+
+class PostgresTransactionRepository(PostgresRepository):
+    """Stores gift payment transactions in PostgreSQL."""
+
+    table_name = "transactions"
+
+    def find_by_reference(self, reference: str) -> Optional[dict[str, Any]]:
+        return self.find_by("reference", reference)
+
+    def update_status(self, reference: str, status: str, extra: Optional[dict[str, Any]] = None) -> Optional[dict[str, Any]]:
+        updates = {"status": status}
+        if extra:
+            updates.update(extra)
+        return self.update_by("reference", reference, updates)
+
+
 # Shared singleton instances used across the app.
-wish_repository = WishRepository()
-transaction_repository = TransactionRepository()
+# Automatically selects storage backend: PostgreSQL if configured, else JSON files.
+
+if Config.DATABASE_URL and _PSYCOPG2_AVAILABLE:
+    logger.info("Using PostgreSQL for persistence (DATABASE_URL is set).")
+    wish_repository = PostgresWishRepository(Config.DATABASE_URL)
+    transaction_repository = PostgresTransactionRepository(Config.DATABASE_URL)
+elif Config.DATABASE_URL and not _PSYCOPG2_AVAILABLE:
+    logger.error(
+        "DATABASE_URL is set but psycopg2 is not installed. "
+        "Run: pip install psycopg2-binary. Falling back to JSON storage (ephemeral on Render)."
+    )
+    wish_repository = WishRepository()
+    transaction_repository = TransactionRepository()
+else:
+    if Config.DATABASE_URL is None or Config.DATABASE_URL == "":
+        logger.warning(
+            "DATABASE_URL not set. Using JSON file storage, which is ephemeral on Render "
+            "(wiped on redeploy/restart). For production, set DATABASE_URL to a PostgreSQL "
+            "database URL (e.g. from Supabase or add a paid persistent disk to Render)."
+        )
+    wish_repository = WishRepository()
+    transaction_repository = TransactionRepository()

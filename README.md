@@ -306,6 +306,72 @@ Email Notification
 
 ---
 
+# Storage & Persistence
+
+By default, wishes and transactions are stored in JSON files (`.data/wishes.json`, `.data/transactions.json`). This is convenient for MVP development but has a critical limitation on Render's free tier:
+
+**⚠️ Free-tier Render storage is ephemeral** — the filesystem is wiped on redeploy and restarts, so all wishes and transactions are lost.
+
+For persistent storage, set `DATABASE_URL` to a PostgreSQL database:
+
+```bash
+# Example: Supabase (free tier available)
+export DATABASE_URL="postgresql://user:password@db.supabase.co/postgres"
+
+# Or: Render's paid PostgreSQL add-on
+# Set via Render dashboard Environment settings
+```
+
+When `DATABASE_URL` is set, the app automatically uses PostgreSQL instead of JSON files. The repository pattern in `models/storage.py` means no route or service code needs to change — swapping backends is transparent.
+
+If you don't have a PostgreSQL database yet:
+- **Supabase** (recommended): Free tier at supabase.com — includes 500MB PostgreSQL
+- **Render PostgreSQL**: Paid add-on ($7+/month for 256 GB) available in your Render dashboard
+- **Local development**: Install PostgreSQL, then set `DATABASE_URL="postgresql://user:password@localhost/birthday_db"`
+
+---
+
+# Testing
+
+Run the automated test suite to verify functionality:
+
+```bash
+# Install test dependencies (already in requirements.txt)
+pip install -r requirements.txt
+
+# Run all tests
+pytest
+
+# Run with verbose output
+pytest -v
+
+# Run a specific test file
+pytest tests/test_wishes.py
+```
+
+Tests cover:
+- Endpoint validation (health, wishes, payments)
+- Input sanitization and validation
+- Rate limiting
+- Callback forgery protection (forged success is rejected if Pay Hero says it failed)
+- Idempotent duplicate callbacks
+- End-to-end payment flow
+
+---
+
+# Scaling to Multiple Workers
+
+By default, rate limiting uses in-memory storage (one limit counter per worker). If you run multiple Gunicorn workers or scale horizontally, set `REDIS_URL` to enforce limits across all instances:
+
+```bash
+export REDIS_URL="redis://localhost:6379/0"  # Local development
+export REDIS_URL="redis://your-redis-host:6379/0"  # Production (e.g. Render Redis add-on)
+```
+
+Without Redis, each worker independently tracks the 5-requests/minute limit, effectively multiplying the limit by the number of workers. Redis centralizes the counter.
+
+---
+
 # Security
 
 - Environment variables protect sensitive credentials.
@@ -322,13 +388,11 @@ Email Notification
 
 # Future Improvements
 
-- PostgreSQL database support
-- Admin dashboard
-- Email templates
-- Transaction history
-- Analytics dashboard
-- Payment receipts
-- Automated test suite
+- Admin dashboard for wish & payment management
+- Email templates for customizable notifications
+- Transaction history/analytics
+- Payment receipts and refund handling
+- WebSocket support for real-time updates
 - Authentication for admin routes
 
 ---
