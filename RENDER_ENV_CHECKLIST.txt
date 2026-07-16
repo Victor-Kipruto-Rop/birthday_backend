@@ -1,0 +1,56 @@
+BIRTHDAY BACKEND - RENDER ENV SETUP CHECKLIST
+═════════════════════════════════════════════════════════════════
+
+🔴 REQUIRED (app won't work without these):
+
+□ SECRET_KEY = [GENERATE: openssl rand -hex 32]
+
+□ FRONTEND_URL = https://[your-vercel-url].vercel.app
+
+□ PAYHERO_USERNAME = [get from payhero.co.ke dashboard]
+
+□ PAYHERO_PASSWORD = [get from payhero.co.ke dashboard]
+
+□ PAYHERO_CHANNEL_ID = [get from payhero.co.ke dashboard]
+
+□ PAYHERO_CALLBACK_URL = https://[your-render-service].onrender.com/api/payhero/callback
+   (Set this AFTER your first deploy - update it with your actual Render URL)
+
+═════════════════════════════════════════════════════════════════
+
+🟡 STRONGLY RECOMMENDED (email & persistence):
+
+□ SMTP_SERVER = smtp.gmail.com
+
+□ SMTP_PORT = 587
+
+□ SMTP_EMAIL = [your-gmail@gmail.com]
+
+□ SMTP_PASSWORD = [Gmail app password from https://myaccount.google.com/apppasswords]
+
+□ RECIPIENT_EMAIL = [owner-email@example.com]
+
+□ DATABASE_URL = postgresql://[connection-string-from-supabase]
+   (Leave blank to use JSON - loses data on redeploy)
+   (Recommended: Free Supabase tier at supabase.com)
+
+═════════════════════════════════════════════════════════════════
+
+🟢 OPTIONAL (only if scaling to multiple workers):
+
+□ REDIS_URL = redis://[redis-url]
+   (Only needed if running multiple Gunicorn workers)
+
+□ LOG_LEVEL = INFO
+
+═════════════════════════════════════════════════════════════════
+
+STEPS TO ADD TO RENDER:
+
+1. Render Dashboard → click your service
+2. Settings → Environment (scroll down)
+3. Click "Add Environment Variable"
+4. Paste each key=value pair
+5. "Save Changes" → service auto-redeploys
+
+═════════════════════════════════════════════════════════════════
