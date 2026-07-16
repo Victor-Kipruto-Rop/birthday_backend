@@ -1,0 +1,27 @@
+# Environment
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Logs
+logs/
+*.log
+
+# Data (JSON storage)
+data/
+
+# OS/editor
+.DS_Store
+.vscode/
+.idea/
+
+# Distribution
+build/
+dist/
