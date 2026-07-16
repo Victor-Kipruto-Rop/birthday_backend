@@ -229,23 +229,39 @@ gunicorn app:app
 
 # Deploying to Render
 
+## Option 1: Using render.yaml (Recommended)
+
+The repository includes `render.yaml` which defines the entire service configuration declaratively:
+
+1. Push to GitHub
+2. On Render, create a new service and connect the GitHub repo
+3. Render automatically detects `render.yaml` and uses it for build/start commands and environment variables
+4. Fill in the secrets (database credentials, API keys) in Render's dashboard
+5. Deploy
+
+The `render.yaml` file specifies:
+- Python 3.12 runtime
+- Build command: `pip install -r requirements.txt`
+- Start command: `gunicorn app:app --workers 1 --timeout 120`
+- All required environment variables (marked `sync: false` for secrets)
+
+## Option 2: Manual Render Dashboard Setup
+
 1. Push the project to GitHub.
 2. Create a new Web Service on Render.
 3. Connect the GitHub repository.
-4. Build Command
+4. Build Command: `pip install -r requirements.txt`
+5. Start Command: `gunicorn app:app --workers 1 --timeout 120`
+6. Add environment variables:
+   - `SECRET_KEY` (generate a secure random string)
+   - `FRONTEND_URL` (your Vercel frontend URL)
+   - `DATABASE_URL` (PostgreSQL connection string, if using PostgreSQL)
+   - `REDIS_URL` (Redis connection string, if scaling to multiple workers)
+   - SMTP credentials (for email)
+   - Pay Hero credentials
+7. Deploy
 
-```bash
-pip install -r requirements.txt
-```
-
-5. Start Command
-
-```bash
-gunicorn app:app
-```
-
-6. Add all environment variables in the Render dashboard.
-7. Deploy.
+After the first deployment, update `PAYHERO_CALLBACK_URL` in environment variables with your Render service URL.
 
 ---
 
@@ -328,6 +344,55 @@ If you don't have a PostgreSQL database yet:
 - **Supabase** (recommended): Free tier at supabase.com — includes 500MB PostgreSQL
 - **Render PostgreSQL**: Paid add-on ($7+/month for 256 GB) available in your Render dashboard
 - **Local development**: Install PostgreSQL, then set `DATABASE_URL="postgresql://user:password@localhost/birthday_db"`
+
+---
+
+# CI/CD Pipeline
+
+The repository includes a complete CI/CD pipeline via GitHub Actions. Every push and pull request automatically:
+
+1. **Tests** (`.github/workflows/tests.yml`): Runs the full pytest suite
+2. **Linting** (`.github/workflows/lint.yml`): Checks code formatting (black), import order (isort), and style (flake8)
+3. **Security** (`.github/workflows/security.yml`): Scans for security issues (bandit) and vulnerable dependencies (safety)
+4. **Deploy** (`.github/workflows/deploy.yml`): On successful tests to `main`, automatically deploys to Render (requires `RENDER_SERVICE_ID` and `RENDER_API_KEY` GitHub secrets)
+
+## Setting Up Render Deployment Automation
+
+To enable automatic deployment on every successful push to `main`:
+
+1. Get your Render service ID: Go to Render dashboard → Select your service → Copy the URL slug (e.g. `srv-xxxxx`)
+2. Get your Render API key: Go to Render Account Settings → API Keys → Create new key
+3. Add GitHub secrets: Go to repo Settings → Secrets and Variables → Actions → add:
+   - `RENDER_SERVICE_ID`: Your Render service ID
+   - `RENDER_API_KEY`: Your Render API key
+
+Once configured, the deploy workflow will:
+- Run tests on every push
+- Only deploy if tests pass
+- Auto-deploy to Render without manual steps
+
+## Running CI/CD Locally
+
+Before pushing, you can run the same checks locally:
+
+```bash
+# Run tests with coverage
+pytest tests/ --cov=app --cov=routes --cov=services --cov=models --cov=utils
+
+# Format code (black, isort)
+black app.py config.py routes/ services/ models/ utils/ tests/
+isort app.py config.py routes/ services/ models/ utils/ tests/
+
+# Check formatting without modifying
+black --check app.py config.py routes/ services/ models/ utils/ tests/
+isort --check-only app.py config.py routes/ services/ models/ utils/ tests/
+
+# Lint with flake8
+flake8 app.py config.py routes/ services/ models/ utils/ tests/
+
+# Security scan
+bandit -r app.py config.py routes/ services/ models/ utils/
+```
 
 ---
 

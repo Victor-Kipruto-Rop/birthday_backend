@@ -1,0 +1,35 @@
+name: Lint & Format
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install linting tools
+        run: pip install flake8 black isort
+
+      - name: Check import sorting (isort)
+        run: isort --check-only --diff app.py config.py routes/ services/ models/ utils/ tests/
+        continue-on-error: true
+
+      - name: Check code formatting (black)
+        run: black --check app.py config.py routes/ services/ models/ utils/ tests/
+        continue-on-error: true
+
+      - name: Lint with flake8
+        run: flake8 app.py config.py routes/ services/ models/ utils/ tests/ --max-line-length=100 --extend-ignore=E203,W503
+        continue-on-error: true

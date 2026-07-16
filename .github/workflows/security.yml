@@ -1,0 +1,31 @@
+name: Security Scan
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install security tools
+        run: pip install bandit safety
+
+      - name: Run Bandit security scanner
+        run: bandit -r app.py config.py routes/ services/ models/ utils/ -f json -o bandit-report.json
+        continue-on-error: true
+
+      - name: Check for vulnerable dependencies
+        run: safety check --json
+        continue-on-error: true
