@@ -23,6 +23,7 @@ A secure, production-ready Flask backend powering my birthday website. The backe
 - Python 3
 - Flask
 - Flask-CORS
+- Flask-Limiter
 - Requests
 - Gunicorn
 - python-dotenv
@@ -45,25 +46,30 @@ birthday-backend/
 ├── .gitignore
 │
 ├── routes/
+│   ├── __init__.py
 │   ├── health.py
 │   ├── wishes.py
 │   ├── payments.py
 │   └── callback.py
 │
 ├── services/
+│   ├── __init__.py
 │   ├── smtp_service.py
 │   ├── payhero_service.py
 │   └── validation.py
 │
 ├── models/
+│   ├── __init__.py
 │   └── storage.py
 │
 ├── utils/
+│   ├── __init__.py
 │   ├── helpers.py
+│   ├── limiter.py
 │   ├── logger.py
 │   └── responses.py
 │
-└── static/
+└── static/uploads/
 ```
 
 ---
@@ -308,6 +314,9 @@ Email Notification
 - Secure CORS configuration.
 - Structured error handling.
 - Logging for monitoring and debugging.
+- **Callback forgery protection**: Pay Hero doesn't publish a webhook signature/HMAC scheme, so `/api/payhero/callback` never trusts the payload's own status field. It only uses the callback to identify which transaction to check, then re-confirms the real outcome via our own authenticated call to Pay Hero's transaction-status endpoint before finalizing anything or emailing a confirmation. A forged "success" POST can't change the result.
+- **Cross-process-safe storage**: JSON writes in `models/storage.py` are protected by an OS-level (`fcntl`) file lock around the full read-modify-write sequence, on top of an in-process thread lock — safe even if Gunicorn runs multiple worker processes.
+- **Rate limiting**: `/api/wish` and `/api/payment` are limited to 5 requests/minute per IP via Flask-Limiter to reduce spam and abuse. Uses in-memory storage by default (fine for a single worker); point it at Redis in `utils/limiter.py` if scaling to multiple workers/instances.
 
 ---
 
@@ -319,7 +328,7 @@ Email Notification
 - Transaction history
 - Analytics dashboard
 - Payment receipts
-- Rate limiting
+- Automated test suite
 - Authentication for admin routes
 
 ---

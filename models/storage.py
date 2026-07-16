@@ -18,6 +18,7 @@ reduce (not eliminate) race conditions between concurrent requests.
 import json
 import os
 import threading
+from contextlib import contextmanager
 from typing import Any, Optional
 
 from config import Config
@@ -26,7 +27,46 @@ from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+# In-process lock: guards against races between threads within one
+# Gunicorn worker.
 _write_lock = threading.Lock()
+
+try:
+    import fcntl
+    _FCNTL_AVAILABLE = True
+except ImportError:
+    # fcntl is POSIX-only. Render/production runs Linux, so this is
+    # expected to always succeed there; the flag exists mainly so local
+    # development on an unsupported OS degrades gracefully (with a
+    # warning) instead of crashing.
+    _FCNTL_AVAILABLE = False
+    logger.warning(
+        "fcntl not available on this platform - cross-process file "
+        "locking is disabled. Do not run multiple worker processes "
+        "against this storage backend in this environment."
+    )
+
+
+@contextmanager
+def _cross_process_lock(lock_path: str):
+    """
+    Hold an OS-level advisory file lock for the duration of the `with`
+    block. This protects the JSON storage files across multiple
+    Gunicorn worker *processes*, which a plain threading.Lock cannot do
+    since each process has its own Python memory space.
+    """
+    if not _FCNTL_AVAILABLE:
+        yield
+        return
+
+    lock_file = open(lock_path, "a+")
+    try:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        yield
+    finally:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+        lock_file.close()
+
 
 
 class JSONRepository:
@@ -42,6 +82,7 @@ class JSONRepository:
     def __init__(self):
         os.makedirs(Config.DATA_DIR, exist_ok=True)
         self.filepath = os.path.join(Config.DATA_DIR, self.filename)
+        self.lock_path = f"{self.filepath}.lock"
         if not os.path.exists(self.filepath):
             self._write_all([])
 
@@ -62,11 +103,18 @@ class JSONRepository:
             os.replace(tmp_path, self.filepath)  # atomic write
 
     def add(self, record: dict[str, Any]) -> dict[str, Any]:
-        """Append a new record, stamping it with a created_at timestamp."""
+        """
+        Append a new record, stamping it with a created_at timestamp.
+
+        The read-modify-write sequence is wrapped in a cross-process
+        file lock so two Gunicorn workers appending at the same instant
+        cannot silently clobber each other's write.
+        """
         record = {**record, "created_at": current_timestamp()}
-        records = self._read_all()
-        records.append(record)
-        self._write_all(records)
+        with _cross_process_lock(self.lock_path):
+            records = self._read_all()
+            records.append(record)
+            self._write_all(records)
         return record
 
     def find_all(self) -> list[dict[str, Any]]:
@@ -81,14 +129,21 @@ class JSONRepository:
         return None
 
     def update_by(self, key: str, value: Any, updates: dict[str, Any]) -> Optional[dict[str, Any]]:
-        """Update the first record matching key == value, in place."""
-        records = self._read_all()
-        for record in records:
-            if record.get(key) == value:
-                record.update(updates)
-                record["updated_at"] = current_timestamp()
-                self._write_all(records)
-                return record
+        """
+        Update the first record matching key == value, in place.
+
+        Wrapped in the same cross-process lock as `add` for the same
+        reason: this is a read-modify-write sequence, not a single
+        atomic operation.
+        """
+        with _cross_process_lock(self.lock_path):
+            records = self._read_all()
+            for record in records:
+                if record.get(key) == value:
+                    record.update(updates)
+                    record["updated_at"] = current_timestamp()
+                    self._write_all(records)
+                    return record
         return None
 
 

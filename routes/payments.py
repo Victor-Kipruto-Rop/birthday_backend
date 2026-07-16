@@ -11,6 +11,7 @@ from models.storage import transaction_repository
 from services.payhero_service import PayHeroError, check_payment_status, initiate_stk_push
 from services.validation import sanitize_text, validate_payment_payload
 from utils.helpers import format_phone_number
+from utils.limiter import limiter
 from utils.logger import get_logger
 from utils.responses import error, server_error, success, validation_error
 
@@ -19,6 +20,7 @@ logger = get_logger(__name__)
 
 
 @payments_bp.route("/api/payment", methods=["POST"])
+@limiter.limit("5 per minute")
 def initiate_payment():
     """Validate a gift payment request and initiate an STK Push via Pay Hero."""
     data = request.get_json(silent=True) or {}
