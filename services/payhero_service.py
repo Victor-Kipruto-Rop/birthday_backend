@@ -26,8 +26,8 @@ from utils.logger import get_logger
 logger = get_logger(__name__)
 
 _MAX_RETRIES = 3
-_RETRY_BACKOFF_SECONDS = 1.5
-_REQUEST_TIMEOUT = 20
+_RETRY_BACKOFF_SECONDS = 0.3  # Reduced from 1.5s for faster polling
+_REQUEST_TIMEOUT = 10  # Reduced from 20s - fail faster if Pay Hero is slow
 
 # Errors worth retrying - network blips and server-side hiccups, not
 # validation/auth errors which will never succeed on retry.

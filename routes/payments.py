@@ -87,7 +87,16 @@ def initiate_payment():
 
 @payments_bp.route("/api/payment-status/<transaction_id>", methods=["GET"])
 def get_payment_status(transaction_id: str):
-    """Check the current status of a gift payment transaction."""
+    """
+    Check the current status of a gift payment transaction.
+    
+    For fast frontend polling, this endpoint:
+    1. Returns cached local status immediately if terminal (success/failed)
+    2. Attempts ONE quick check with Pay Hero (no retries, fail-fast)
+    3. Finalizes if status is terminal
+    
+    Frontend should poll frequently (every 1-2 sec) for best UX.
+    """
     local_record = transaction_repository.find_by_reference(transaction_id)
     if not local_record:
         return error("Transaction not found.", status_code=404)
@@ -97,11 +106,12 @@ def get_payment_status(transaction_id: str):
     if local_record.get("status") in ("success", "failed"):
         return success(message="Payment status retrieved.", data=_safe_transaction_data(local_record))
 
-    # Try to fetch live status from Pay Hero
+    # Try to fetch live status from Pay Hero (single attempt, no retries)
     try:
         provider_status = check_payment_status(transaction_id)
     except PayHeroError as exc:
-        logger.warning("Could not fetch live status from Pay Hero: %s", exc)
+        logger.debug("Could not fetch live status from Pay Hero (will retry later): %s", exc)
+        # Return current local status - callback will update it when it arrives
         return success(
             message="Payment is still pending confirmation.",
             data=_safe_transaction_data(local_record),
