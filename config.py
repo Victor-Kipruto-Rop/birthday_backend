@@ -56,6 +56,7 @@ class Config:
     PAYHERO_USERNAME: str = _get_env("PAYHERO_USERNAME", default="")
     PAYHERO_PASSWORD: str = _get_env("PAYHERO_PASSWORD", default="")
     PAYHERO_CHANNEL_ID: str = _get_env("PAYHERO_CHANNEL_ID", default="")
+    PAYHERO_PROVIDER: str = _get_env("PAYHERO_PROVIDER", default="m-pesa")
     PAYHERO_CALLBACK_URL: str = _get_env("PAYHERO_CALLBACK_URL", default="")
 
     # --- Logging -------------------------------------------------
@@ -76,33 +77,42 @@ class Config:
     # If not set, falls back to in-memory (only works with single worker).
     REDIS_URL: str = _get_env("REDIS_URL", default="")
 
-    # Optional: a full Postgres connection string (e.g. from Supabase).
-    # When set, storage automatically switches to Postgres instead of
-    # local JSON files - required for persistence on Render's free
-    # tier, whose filesystem is wiped on every redeploy/restart.
-    DATABASE_URL: str = _get_env("DATABASE_URL", default="")
-
-    # --- Rate limiting -------------------------------------------------
-    # Optional Redis URL for Flask-Limiter's shared storage backend.
-    # Only needed if running multiple Gunicorn workers/instances; a
-    # single worker works fine with the default in-memory storage.
-    REDIS_URL: str = _get_env("REDIS_URL", default="")
-
     @classmethod
-    def validate(cls) -> None:
+    def validate(cls) -> list[str]:
         """
-        Perform a soft validation pass at startup and log warnings for
-        anything that looks unconfigured. This does not raise, so the
-        app can still boot locally for quick testing, but production
-        deployments should have every value set correctly.
+        Perform startup validation. Pay Hero credentials are REQUIRED
+        for production — app must not boot without them.
+        Returns list of warnings; raises RuntimeError on critical missing config.
         """
         warnings = []
+        
+        # SOFT WARNINGS (app boots but user sees warnings in logs)
         if cls.SECRET_KEY == "dev-secret-key-change-me":
             warnings.append("SECRET_KEY is using the insecure default value.")
         if not cls.SMTP_EMAIL or not cls.SMTP_PASSWORD:
             warnings.append("SMTP_EMAIL / SMTP_PASSWORD not fully configured.")
-        if not cls.PAYHERO_USERNAME or not cls.PAYHERO_PASSWORD:
-            warnings.append("PAYHERO_USERNAME / PAYHERO_PASSWORD not fully configured.")
+        
+        # HARD FAILURES (app cannot boot without these)
+        if not cls.PAYHERO_USERNAME:
+            raise RuntimeError(
+                "PAYHERO_USERNAME not set. Cannot boot without Pay Hero credentials. "
+                "Set via: export PAYHERO_USERNAME=... (or Render Environment dashboard)"
+            )
+        if not cls.PAYHERO_PASSWORD:
+            raise RuntimeError(
+                "PAYHERO_PASSWORD not set. Cannot boot without Pay Hero credentials. "
+                "Set via: export PAYHERO_PASSWORD=... (or Render Environment dashboard)"
+            )
+        if not cls.PAYHERO_CHANNEL_ID:
+            raise RuntimeError(
+                "PAYHERO_CHANNEL_ID not set. Cannot boot without Pay Hero credentials. "
+                "Set via: export PAYHERO_CHANNEL_ID=... (or Render Environment dashboard)"
+            )
         if not cls.PAYHERO_CALLBACK_URL:
-            warnings.append("PAYHERO_CALLBACK_URL is not set; callbacks will fail.")
+            raise RuntimeError(
+                "PAYHERO_CALLBACK_URL not set. Payment callbacks will fail. "
+                "Set via: export PAYHERO_CALLBACK_URL=https://your-backend/api/payhero/callback"
+            )
+        
         return warnings
+

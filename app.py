@@ -31,6 +31,11 @@ def create_app() -> Flask:
     app = Flask(__name__)
     app.config.from_object(Config)
 
+    # Validate critical configuration at startup - raises RuntimeError if missing
+    warnings = Config.validate()
+    for warning in warnings:
+        logger.warning("Configuration warning: %s", warning)
+
     # Restrict CORS to the configured frontend origin only.
     CORS(app, resources={r"/api/*": {"origins": Config.FRONTEND_URL}})
 
@@ -52,15 +57,19 @@ def create_app() -> Flask:
             status_code=429,
         )
 
-    # Surface any soft configuration warnings at startup.
-    for warning in Config.validate():
-        logger.warning("Configuration warning: %s", warning)
-
     logger.info("Flask app created and configured successfully.")
     return app
 
 
-app = create_app()
+# Create app instance for Gunicorn (production)
+# In tests, pytest fixtures create the app via create_app()
+try:
+    app = create_app()
+except RuntimeError as exc:
+    # App cannot boot without credentials - log and re-raise
+    # This prevents the app from starting with missing config
+    logger.error("Cannot boot app: %s", exc)
+    raise
 
 if __name__ == "__main__":
     # Local development server only. In production, Gunicorn imports

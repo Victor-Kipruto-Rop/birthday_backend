@@ -22,17 +22,12 @@ body cannot change that outcome because we never act on it directly.
 from flask import Blueprint, request
 
 from models.storage import transaction_repository
-from services.payhero_service import PayHeroError, check_payment_status
-from services.smtp_service import send_payment_failed, send_payment_success
+from services.payhero_service import PayHeroError, check_payment_status, finalize_transaction
 from utils.logger import get_logger
 from utils.responses import success
 
 callback_bp = Blueprint("callback", __name__)
 logger = get_logger(__name__)
-
-_SUCCESS_STATUSES = {"success", "completed", "paid"}
-_FAILED_STATUSES = {"failed", "cancelled", "canceled", "declined", "error"}
-_PENDING_STATUSES = {"queued", "pending", "processing"}
 
 
 def _extract_reference(payload: dict) -> str | None:
@@ -44,19 +39,6 @@ def _extract_reference(payload: dict) -> str | None:
     """
     response = payload.get("response", payload)
     return response.get("external_reference") or response.get("reference")
-
-
-def _normalize_status(raw_status: str) -> str:
-    """Map Pay Hero's various status strings to one of: success, failed, pending."""
-    status = (raw_status or "").strip().lower()
-    if status in _SUCCESS_STATUSES:
-        return "success"
-    if status in _FAILED_STATUSES:
-        return "failed"
-    if status in _PENDING_STATUSES:
-        return "pending"
-    logger.warning("Unrecognized Pay Hero status value: %r - treating as pending.", raw_status)
-    return "pending"
 
 
 @callback_bp.route("/api/payhero/callback", methods=["POST"])
@@ -97,31 +79,7 @@ def payhero_callback():
         # to confirm this transaction later.
         return success(message="Callback received, verification pending.", status_code=200)
 
-    verified_status = _normalize_status(provider_status.get("status"))
-
-    if verified_status == "pending":
-        logger.info("Callback for %s received, but verified status is still pending.", reference)
-        return success(message="Callback received, payment still pending.", status_code=200)
-
-    transaction_repository.update_status(
-        reference,
-        verified_status,
-        extra={
-            "provider_reference": provider_status.get("mpesa_receipt_number")
-            or provider_status.get("provider_reference"),
-            "verified_provider_status": provider_status,
-        },
-    )
-
-    logger.info("Transaction %s finalized with verified status: %s", reference, verified_status)
-
-    name = local_record.get("name", "Anonymous")
-    phone = local_record.get("phone", "")
-    amount = local_record.get("amount", 0)
-
-    if verified_status == "success":
-        send_payment_success(name, phone, amount, reference)
-    else:
-        send_payment_failed(name, phone, amount, reference, reason=verified_status)
-
+    # Use shared finalization logic (same as polling path)
+    finalize_transaction(reference, local_record, provider_status)
+    
     return success(message="Callback processed successfully.", status_code=200)

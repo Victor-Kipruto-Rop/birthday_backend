@@ -6,6 +6,7 @@ All Pay Hero API integration logic lives here:
     - STK Push initiation
     - Payment status checks
     - Transient-failure retry handling
+    - Transaction finalization (shared by callback and polling paths)
 
 Pay Hero API reference: https://payhero.co.ke/
 """
@@ -17,7 +18,9 @@ from typing import Any, Optional
 import requests
 
 from config import Config
-from utils.helpers import generate_reference
+from models.storage import transaction_repository
+from services.smtp_service import send_payment_failed, send_payment_success
+from utils.helpers import current_timestamp, generate_reference
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -29,6 +32,28 @@ _REQUEST_TIMEOUT = 20
 # Errors worth retrying - network blips and server-side hiccups, not
 # validation/auth errors which will never succeed on retry.
 _RETRYABLE_STATUS_CODES = {500, 502, 503, 504}
+
+
+def _normalize_url(base: str) -> str:
+    """Strip trailing slashes to prevent double slashes in URL concatenation."""
+    return base.rstrip("/") if base else base
+
+
+def _normalize_status(raw_status: str) -> str:
+    """Map Pay Hero's various status strings to one of: success, failed, pending."""
+    _SUCCESS_STATUSES = {"success", "completed", "paid"}
+    _FAILED_STATUSES = {"failed", "cancelled", "canceled", "declined", "error"}
+    _PENDING_STATUSES = {"queued", "pending", "processing"}
+    
+    status = (raw_status or "").strip().lower()
+    if status in _SUCCESS_STATUSES:
+        return "success"
+    if status in _FAILED_STATUSES:
+        return "failed"
+    if status in _PENDING_STATUSES:
+        return "pending"
+    logger.warning("Unrecognized Pay Hero status value: %r - treating as pending.", raw_status)
+    return "pending"
 
 
 class PayHeroError(Exception):
@@ -122,12 +147,13 @@ def initiate_stk_push(phone: str, amount: float, reference: Optional[str] = None
         "amount": amount,
         "phone_number": phone,
         "channel_id": Config.PAYHERO_CHANNEL_ID,
-        "provider": "m-pesa",
+        "provider": Config.PAYHERO_PROVIDER,
         "external_reference": reference,
         "callback_url": Config.PAYHERO_CALLBACK_URL,
     }
 
-    url = f"{Config.PAYHERO_BASE_URL}/payments"
+    base_url = _normalize_url(Config.PAYHERO_BASE_URL)
+    url = f"{base_url}/payments"
 
     try:
         response = _request("POST", url, json=payload, headers=_get_auth_header())
@@ -157,7 +183,8 @@ def check_payment_status(transaction_id: str) -> dict[str, Any]:
 
     Returns the raw Pay Hero status payload. Raises PayHeroError on failure.
     """
-    url = f"{Config.PAYHERO_BASE_URL}/transaction-status"
+    base_url = _normalize_url(Config.PAYHERO_BASE_URL)
+    url = f"{base_url}/transaction-status"
     params = {"reference": transaction_id}
 
     response = _request_with_retry("GET", url, params=params, headers=_get_auth_header())
@@ -173,3 +200,56 @@ def check_payment_status(transaction_id: str) -> dict[str, Any]:
         )
 
     return response.json() if response.content else {}
+
+
+def finalize_transaction(
+    transaction_ref: str, local_record: dict[str, Any], provider_status: dict[str, Any]
+) -> None:
+    """
+    Finalize a transaction after receiving terminal status from Pay Hero.
+    
+    This shared function is used by both the callback handler and polling status
+    checks to ensure consistent finalization logic regardless of how the status
+    is obtained.
+    
+    Args:
+        transaction_ref: Transaction reference
+        local_record: Local transaction record from storage
+        provider_status: Raw Pay Hero API response containing status
+        
+    Raises: Nothing (logs errors instead)
+    """
+    verified_status = _normalize_status(provider_status.get("status"))
+    
+    # Don't finalize if status is still pending
+    if verified_status == "pending":
+        logger.info("Transaction %s status still pending, not finalizing", transaction_ref)
+        return
+    
+    try:
+        # Update storage with terminal status
+        transaction_repository.update_status(
+            transaction_ref,
+            verified_status,
+            extra={
+                "provider_reference": provider_status.get("mpesa_receipt_number")
+                or provider_status.get("provider_reference"),
+                "verified_provider_status": provider_status,
+                "finalized_at": current_timestamp(),
+            },
+        )
+        
+        logger.info("Transaction %s finalized with status: %s", transaction_ref, verified_status)
+        
+        # Send notification email
+        name = local_record.get("name", "Anonymous")
+        amount = local_record.get("amount", 0)
+        
+        if verified_status == "success":
+            send_payment_success(name, local_record.get("phone", ""), amount, transaction_ref)
+        else:
+            send_payment_failed(name, local_record.get("phone", ""), amount, transaction_ref, reason=verified_status)
+    
+    except Exception as exc:
+        logger.error("Failed to finalize transaction %s: %s", transaction_ref, exc)
+        # Log the error but don't raise - finalization can be retried later

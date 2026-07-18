@@ -62,6 +62,11 @@ def _cross_process_lock(lock_path: str):
         yield
         return
 
+    # Ensure the directory for the lock file exists
+    lock_dir = os.path.dirname(lock_path)
+    if lock_dir:
+        os.makedirs(lock_dir, exist_ok=True)
+    
     lock_file = open(lock_path, "a+")
     try:
         fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
