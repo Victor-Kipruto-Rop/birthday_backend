@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PulseGate | Birthday Backend API</title>
+
+    <meta name="description" content="PulseGate - Secure, Production-Ready Backend powering Birthday Wishes, Payments and Notifications.">
+
+    <style>
+        *{
+            margin:0;
+            padding:0;
+            box-sizing:border-box;
+        }
+
+        :root{
+            --bg:#050816;
+            --bg2:#0b1226;
+            --card:rgba(17,24,39,.75);
+            --border:rgba(255,255,255,.08);
+            --primary:#6C63FF;
+            --secondary:#00D4FF;
+            --success:#00E676;
+            --text:#ffffff;
+            --muted:#a8b3cf;
+        }
+
+        html{
+            overflow-x:hidden;
+            width:100%;
+        }
+
+        body{
+            font-family:Inter,Segoe UI,Arial,sans-serif;
+            background:
+                radial-gradient(circle at top right,#2235ff22,transparent 35%),
+                radial-gradient(circle at bottom left,#00d4ff18,transparent 30%),
+                var(--bg);
+            color:var(--text);
+            width:100%;
+            min-height:100vh;
+            min-height:100dvh; /* accounts for mobile browser chrome (address bar), avoids content looking cut off */
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            padding:25px;
+            overflow-x:hidden;
+        }
+
+        body::before{
+            content:"";
+            position:fixed;
+            width:700px;
+            height:700px;
+            background:var(--primary);
+            filter:blur(180px);
+            opacity:.08;
+            border-radius:50%;
+            top:-250px;
+            right:-200px;
+        }
+
+        body::after{
+            content:"";
+            position:fixed;
+            width:500px;
+            height:500px;
+            background:#00D4FF;
+            filter:blur(170px);
+            opacity:.06;
+            border-radius:50%;
+            bottom:-180px;
+            left:-150px;
+        }
+
+        .card{
+            width:min(100%,900px);
+            background:var(--card);
+            border:1px solid var(--border);
+            backdrop-filter:blur(22px);
+            border-radius:28px;
+            padding:50px;
+            text-align:center;
+            box-shadow:
+                0 30px 60px rgba(0,0,0,.45),
+                inset 0 0 0 1px rgba(255,255,255,.03);
+        }
+
+        .logo{
+            width:90px;
+            height:90px;
+            margin:auto;
+            border-radius:24px;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            font-size:42px;
+            background:linear-gradient(135deg,var(--primary),var(--secondary));
+            box-shadow:0 15px 40px rgba(108,99,255,.35);
+            animation:float 3s ease-in-out infinite;
+        }
+
+        @keyframes float{
+            50%{transform:translateY(-8px);}
+        }
+
+        h1{
+            font-size:3rem;
+            margin-top:25px;
+            letter-spacing:.5px;
+        }
+
+        .subtitle{
+            margin-top:15px;
+            color:var(--muted);
+            font-size:1.1rem;
+            line-height:1.7;
+        }
+
+        .status{
+            margin:35px auto;
+            display:inline-flex;
+            align-items:center;
+            gap:10px;
+            padding:12px 24px;
+            border-radius:999px;
+            background:rgba(0,230,118,.12);
+            border:1px solid rgba(0,230,118,.3);
+            color:var(--success);
+            font-weight:700;
+        }
+
+        .dot{
+            width:12px;
+            height:12px;
+            border-radius:50%;
+            background:var(--success);
+            box-shadow:0 0 18px var(--success);
+            animation:pulse 1.5s infinite;
+        }
+
+        @keyframes pulse{
+            50%{
+                transform:scale(1.4);
+                opacity:.5;
+            }
+        }
+
+        .grid{
+            display:grid;
+            grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+            gap:20px;
+            margin:40px 0;
+        }
+
+        .item{
+            background:rgba(255,255,255,.03);
+            border:1px solid rgba(255,255,255,.05);
+            border-radius:18px;
+            padding:25px;
+        }
+
+        .item h3{
+            margin-bottom:12px;
+        }
+
+        .item p{
+            color:var(--muted);
+            line-height:1.7;
+            font-size:.95rem;
+        }
+
+        .buttons{
+            display:flex;
+            justify-content:center;
+            gap:15px;
+            flex-wrap:wrap;
+            margin-top:10px;
+        }
+
+        .btn{
+            text-decoration:none;
+            color:#fff;
+            padding:15px 26px;
+            border-radius:14px;
+            transition:.3s;
+            font-weight:600;
+        }
+
+        .primary{
+            background:linear-gradient(135deg,var(--primary),var(--secondary));
+        }
+
+        .secondary{
+            border:1px solid rgba(255,255,255,.15);
+            background:rgba(255,255,255,.04);
+        }
+
+        .btn:hover{
+            transform:translateY(-4px);
+        }
+
+        footer{
+            margin-top:40px;
+            color:var(--muted);
+            font-size:.9rem;
+        }
+
+        @media(max-width:768px){
+
+            .card{
+                padding:35px 25px;
+            }
+
+            h1{
+                font-size:2.2rem;
+            }
+
+            .subtitle{
+                font-size:1rem;
+            }
+
+        }
+
+        @media(max-width:380px){
+
+            .card{
+                padding:28px 18px;
+            }
+
+            .grid{
+                grid-template-columns:1fr;
+            }
+
+            .buttons{
+                flex-direction:column;
+            }
+
+            .btn{
+                width:100%;
+                text-align:center;
+            }
+
+        }
+
+        /* Short viewports (landscape phones, small browser windows): centering a
+           tall card vertically can push its top above the fold with no visible
+           cue that there's more above. Align to the top instead so the page
+           always starts readable and scrolls naturally from there. */
+        @media(max-height:600px){
+
+            body{
+                align-items:flex-start;
+                padding-top:40px;
+            }
+
+        }
+
+    </style>
+
+</head>
+
+<body>
+
+<div class="card">
+
+    <div class="logo">
+        ⚡
+    </div>
+
+    <h1>PulseGate</h1>
+
+    <p class="subtitle">
+        Secure Production Backend powering Birthday Wishes,
+        PayHero Payments, Email Notifications and API Services.
+    </p>
+
+    <div class="status">
+        <span class="dot"></span>
+        SYSTEM ONLINE
+    </div>
+
+    <div class="grid">
+
+        <div class="item">
+            <h3>⚙ API</h3>
+            <p>Production-ready REST API with secure endpoints and validation.</p>
+        </div>
+
+        <div class="item">
+            <h3>💳 Payments</h3>
+            <p>Integrated with PayHero STK Push for secure M-Pesa transactions.</p>
+        </div>
+
+        <div class="item">
+            <h3>📧 Notifications</h3>
+            <p>SMTP email delivery for birthday wishes and payment confirmations.</p>
+        </div>
+
+        <div class="item">
+            <h3>🛡 Security</h3>
+            <p>Redis rate limiting, PostgreSQL persistence, CORS protection and environment-based secrets.</p>
+        </div>
+
+    </div>
+
+    <div class="buttons">
+
+        <a href="/health" class="btn primary">
+            Health Check
+        </a>
+
+        <a href="/api" class="btn secondary">
+            API Endpoint
+        </a>
+
+    </div>
+
+    <footer>
+
+        PulseGate • Version 1.0 • Built with Flask • Powered by Render
+
+    </footer>
+
+</div>
+
+</body>
+</html>
