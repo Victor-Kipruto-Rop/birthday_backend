@@ -219,15 +219,20 @@ def finalize_transaction(
         
     Raises: Nothing (logs errors instead)
     """
+    logger.info("🔄 [FINALIZE] Starting finalization for %s", transaction_ref)
+    logger.info("🔄 [FINALIZE] Provider response: %s", provider_status)
+    
     verified_status = _normalize_status(provider_status.get("status"))
+    logger.info("🔄 [FINALIZE] Normalized status: %s (from: %s)", verified_status, provider_status.get("status"))
     
     # Don't finalize if status is still pending
     if verified_status == "pending":
-        logger.info("Transaction %s status still pending, not finalizing", transaction_ref)
+        logger.info("🔄 [FINALIZE] Status is still pending, skipping finalization")
         return
     
     try:
         # Update storage with terminal status
+        logger.info("💾 [FINALIZE] Updating storage with status: %s", verified_status)
         transaction_repository.update_status(
             transaction_ref,
             verified_status,
@@ -239,17 +244,21 @@ def finalize_transaction(
             },
         )
         
-        logger.info("Transaction %s finalized with status: %s", transaction_ref, verified_status)
+        logger.info("✅ [FINALIZE] Transaction %s finalized with status: %s", transaction_ref, verified_status)
         
         # Send notification email
         name = local_record.get("name", "Anonymous")
         amount = local_record.get("amount", 0)
         
         if verified_status == "success":
+            logger.info("📧 [FINALIZE] Sending success email to %s (amount: %s)", name, amount)
             send_payment_success(name, local_record.get("phone", ""), amount, transaction_ref)
+            logger.info("✅ [FINALIZE] Success email sent")
         else:
+            logger.info("📧 [FINALIZE] Sending failure email to %s (reason: %s)", name, verified_status)
             send_payment_failed(name, local_record.get("phone", ""), amount, transaction_ref, reason=verified_status)
+            logger.info("✅ [FINALIZE] Failure email sent")
     
     except Exception as exc:
-        logger.error("Failed to finalize transaction %s: %s", transaction_ref, exc)
+        logger.error("❌ [FINALIZE] Failed to finalize transaction %s: %s", transaction_ref, exc, exc_info=True)
         # Log the error but don't raise - finalization can be retried later

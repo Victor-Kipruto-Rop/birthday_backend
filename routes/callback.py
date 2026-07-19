@@ -45,6 +45,9 @@ def _extract_reference(payload: dict) -> str | None:
 def payhero_callback():
     """Handle an incoming Pay Hero payment callback."""
     payload = request.get_json(silent=True) or {}
+    
+    logger.info("=== PAYHERO CALLBACK RECEIVED ===")
+    logger.info("Payload: %s", payload)
 
     if not payload:
         logger.warning("Received empty/invalid Pay Hero callback payload.")
@@ -53,6 +56,8 @@ def payhero_callback():
         return success(message="Callback received.", status_code=200)
 
     reference = _extract_reference(payload)
+    logger.info("Extracted reference: %s", reference)
+    
     if not reference:
         logger.warning("Callback missing a transaction reference: %s", payload)
         return success(message="Callback received.", status_code=200)
@@ -61,6 +66,8 @@ def payhero_callback():
     if not local_record:
         logger.warning("Callback for unknown transaction reference: %s", reference)
         return success(message="Callback received.", status_code=200)
+
+    logger.info("Local record found for %s - Current status: %s", reference, local_record.get("status"))
 
     # Idempotency guard: if we've already processed a terminal status for
     # this transaction, do not re-send emails or re-process the callback.
@@ -72,14 +79,17 @@ def payhero_callback():
     # authenticated request, rather than trusting the callback body.
     try:
         provider_status = check_payment_status(reference)
+        logger.info("✅ Verified status from Pay Hero: %s", provider_status.get("status"))
     except PayHeroError as exc:
-        logger.error("Could not verify callback for %s via Pay Hero API: %s", reference, exc)
+        logger.error("❌ Could not verify callback for %s via Pay Hero API: %s", reference, exc)
         # Do not finalize on an unverifiable callback. Pay Hero (or our
         # own /api/payment-status polling) will give us another chance
         # to confirm this transaction later.
         return success(message="Callback received, verification pending.", status_code=200)
 
     # Use shared finalization logic (same as polling path)
+    logger.info("🔄 Finalizing transaction %s with provider status: %s", reference, provider_status)
     finalize_transaction(reference, local_record, provider_status)
     
+    logger.info("✅ Transaction %s finalized successfully", reference)
     return success(message="Callback processed successfully.", status_code=200)

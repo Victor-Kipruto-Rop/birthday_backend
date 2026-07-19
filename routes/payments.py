@@ -97,21 +97,35 @@ def get_payment_status(transaction_id: str):
     
     Frontend should poll frequently (every 1-2 sec) for best UX.
     """
+    logger.info("=== PAYMENT STATUS CHECK ===")
+    logger.info("Transaction ID: %s", transaction_id)
+    
     local_record = transaction_repository.find_by_reference(transaction_id)
     if not local_record:
+        logger.warning("Transaction not found: %s", transaction_id)
         return error("Transaction not found.", status_code=404)
+
+    logger.info("Local status: %s | Amount: %s | Created: %s | Finalized: %s", 
+                local_record.get("status"), 
+                local_record.get("amount"),
+                local_record.get("created_at"),
+                local_record.get("finalized_at"))
 
     # If we already have a final status recorded (via the callback),
     # return it directly without hitting Pay Hero again.
     if local_record.get("status") in ("success", "failed"):
+        logger.info("✅ Returning cached terminal status: %s", local_record.get("status"))
         return success(message="Payment status retrieved.", data=_safe_transaction_data(local_record))
 
     # Try to fetch live status from Pay Hero (single attempt, no retries)
     try:
+        logger.info("🔄 Checking live status with Pay Hero...")
         provider_status = check_payment_status(transaction_id)
+        logger.info("Pay Hero status: %s", provider_status.get("status"))
     except PayHeroError as exc:
         logger.debug("Could not fetch live status from Pay Hero (will retry later): %s", exc)
         # Return current local status - callback will update it when it arrives
+        logger.info("Returning current local status (Pay Hero check failed)")
         return success(
             message="Payment is still pending confirmation.",
             data=_safe_transaction_data(local_record),
@@ -120,13 +134,16 @@ def get_payment_status(transaction_id: str):
     # CRITICAL FIX (Issue 4): If status is now terminal, finalize it immediately
     # This ensures payments don't stay "pending" forever if the callback never fires
     try:
+        logger.info("🔄 Finalizing transaction with provider status: %s", provider_status.get("status"))
         finalize_transaction(transaction_id, local_record, provider_status)
         # Reload updated record after finalization
         local_record = transaction_repository.find_by_reference(transaction_id) or local_record
+        logger.info("✅ Transaction finalized. New status: %s", local_record.get("status"))
     except Exception as exc:  # noqa: BLE001
         logger.error("Failed to finalize transaction during polling: %s", exc)
         # Still return the response; finalization can be retried on next poll
 
+    logger.info("Returning status: %s", local_record.get("status"))
     return success(
         message="Payment status retrieved.",
         data=_safe_transaction_data(local_record),
