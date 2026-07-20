@@ -4,7 +4,7 @@ services:
     runtime: python
     pythonVersion: 3.12
     plan: free
-    buildCommand: pip install -r requirements.txt
+    buildCommand: bash build.sh
     startCommand: gunicorn app:app --workers 1 --timeout 120
     envVars:
       - key: PYTHON_VERSION
