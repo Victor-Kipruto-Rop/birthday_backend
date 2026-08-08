@@ -181,6 +181,32 @@ def test_callback_documented_payhero_field_names(client, mock_payhero_initiate, 
     assert transaction["status"] == "success"
 
 
+def test_cancelled_payment_exposes_cancellation_reason(client, mock_payhero_initiate):
+    """A cancelled prompt should be finalized and explain that it was cancelled."""
+    cancelled = MagicMock()
+    cancelled.status_code = 200
+    cancelled.content = b'{"status":"CANCELLED"}'
+    cancelled.json.return_value = {"status": "CANCELLED"}
+
+    with patch("services.payhero_service._request", return_value=mock_payhero_initiate):
+        response = client.post(
+            "/api/payment",
+            json={"name": "Jane Doe", "phone": "0712345678", "amount": 500},
+        )
+    ref = response.get_json()["data"]["reference"]
+
+    with patch("services.payhero_service._request_with_retry", return_value=cancelled):
+        response = client.post(
+            "/api/payhero/callback",
+            json={"response": {"ExternalReference": ref, "Status": "Cancelled"}},
+        )
+
+    assert response.status_code == 200
+    transaction = client.get(f"/api/payment-status/{ref}").get_json()["data"]
+    assert transaction["status"] == "failed"
+    assert transaction["reason"] == "cancelled"
+
+
 def test_callback_duplicate_ignored(client, mock_payhero_initiate, mock_payhero_status_success):
     """Duplicate callbacks for the same transaction should be idempotent."""
     # Create and finalize a transaction
