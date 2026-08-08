@@ -26,8 +26,10 @@ from utils.logger import get_logger
 logger = get_logger(__name__)
 
 _MAX_RETRIES = 3
+_STATUS_MAX_RETRIES = 1
 _RETRY_BACKOFF_SECONDS = 0.3  # Reduced from 1.5s for faster polling
 _REQUEST_TIMEOUT = 10  # Reduced from 20s - fail faster if Pay Hero is slow
+_STATUS_REQUEST_TIMEOUT = 4
 
 # Errors worth retrying - network blips and server-side hiccups, not
 # validation/auth errors which will never succeed on retry.
@@ -86,7 +88,13 @@ def _request(method: str, url: str, **kwargs) -> requests.Response:
         raise PayHeroError(f"Pay Hero request failed: {exc}")
 
 
-def _request_with_retry(method: str, url: str, **kwargs) -> requests.Response:
+def _request_with_retry(
+    method: str,
+    url: str,
+    max_retries: int = _MAX_RETRIES,
+    request_timeout: int = _REQUEST_TIMEOUT,
+    **kwargs,
+) -> requests.Response:
     """
     Perform an HTTP request with retry-on-transient-failure behavior.
     Retries on network errors and 5xx responses using exponential backoff.
@@ -97,14 +105,14 @@ def _request_with_retry(method: str, url: str, **kwargs) -> requests.Response:
     """
     last_exception: Optional[Exception] = None
 
-    for attempt in range(1, _MAX_RETRIES + 1):
+    for attempt in range(1, max_retries + 1):
         try:
-            response = requests.request(method, url, timeout=_REQUEST_TIMEOUT, **kwargs)
+            response = requests.request(method, url, timeout=request_timeout, **kwargs)
 
             if response.status_code in _RETRYABLE_STATUS_CODES:
                 logger.warning(
                     "Pay Hero returned retryable status %s (attempt %d/%d)",
-                    response.status_code, attempt, _MAX_RETRIES,
+                    response.status_code, attempt, max_retries,
                 )
                 last_exception = PayHeroError(
                     f"Pay Hero server error: {response.status_code}", response.status_code
@@ -116,13 +124,13 @@ def _request_with_retry(method: str, url: str, **kwargs) -> requests.Response:
 
         except requests.exceptions.RequestException as exc:
             logger.warning(
-                "Pay Hero request error on attempt %d/%d: %s", attempt, _MAX_RETRIES, exc
+                "Pay Hero request error on attempt %d/%d: %s", attempt, max_retries, exc
             )
             last_exception = exc
             time.sleep(_RETRY_BACKOFF_SECONDS * attempt)
 
-    logger.error("Pay Hero request failed after %d attempts: %s", _MAX_RETRIES, last_exception)
-    raise PayHeroError(f"Pay Hero request failed after {_MAX_RETRIES} attempts: {last_exception}")
+    logger.error("Pay Hero request failed after %d attempts: %s", max_retries, last_exception)
+    raise PayHeroError(f"Pay Hero request failed after {max_retries} attempts: {last_exception}")
 
 
 def initiate_stk_push(phone: str, amount: float, reference: Optional[str] = None) -> dict[str, Any]:
@@ -187,7 +195,10 @@ def check_payment_status(transaction_id: str) -> dict[str, Any]:
     url = f"{base_url}/transaction-status"
     params = {"reference": transaction_id}
 
-    response = _request_with_retry("GET", url, params=params, headers=_get_auth_header())
+    response = _request_with_retry(
+        "GET", url, params=params, headers=_get_auth_header(),
+        max_retries=_STATUS_MAX_RETRIES, request_timeout=_STATUS_REQUEST_TIMEOUT,
+    )
 
     if response.status_code != 200:
         logger.error(

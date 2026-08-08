@@ -14,6 +14,7 @@ from flask import Blueprint, request
 
 from models.storage import transaction_repository
 from services.payhero_service import PayHeroError, check_payment_status, finalize_transaction, initiate_stk_push
+from services.availability import submissions_open
 from services.validation import sanitize_text, validate_payment_payload
 from utils.helpers import format_phone_number
 from utils.limiter import limiter
@@ -42,6 +43,8 @@ def _safe_transaction_data(record: dict) -> dict:
 @limiter.limit("5 per minute")
 def initiate_payment():
     """Validate a gift payment request and initiate an STK Push via Pay Hero."""
+    if not submissions_open():
+        return error("The window for birthday gifts has closed.", status_code=403)
     data = request.get_json(silent=True) or {}
 
     is_valid, errors = validate_payment_payload(data)

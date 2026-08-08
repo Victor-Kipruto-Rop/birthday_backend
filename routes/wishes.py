@@ -10,10 +10,11 @@ from flask import Blueprint, request
 from models.storage import wish_repository
 from services.smtp_service import send_wish_email
 from services.validation import sanitize_text, validate_wish_payload
+from services.availability import submissions_open
 from utils.helpers import format_phone_number
 from utils.limiter import limiter
 from utils.logger import get_logger
-from utils.responses import server_error, success, validation_error
+from utils.responses import error, server_error, success, validation_error
 
 wishes_bp = Blueprint("wishes", __name__)
 logger = get_logger(__name__)
@@ -23,6 +24,8 @@ logger = get_logger(__name__)
 @limiter.limit("5 per minute")
 def submit_wish():
     """Receive, validate, store, and email a birthday wish."""
+    if not submissions_open():
+        return error("The window for birthday wishes has closed.", status_code=403)
     data = request.get_json(silent=True) or {}
 
     is_valid, errors = validate_wish_payload(data)
