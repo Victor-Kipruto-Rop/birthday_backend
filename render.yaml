@@ -39,3 +39,5 @@ services:
         sync: false
       - key: REDIS_URL
         sync: false
+      - key: SUBMISSION_CUTOFF_ISO
+        value: 2026-08-09T00:00:00+03:00

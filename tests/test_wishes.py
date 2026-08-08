@@ -16,6 +16,16 @@ def test_health_check(client):
     assert data["data"]["status"] == "healthy"
 
 
+def test_availability_check(client):
+    """GET /api/availability should expose the configured cutoff."""
+    response = client.get("/api/availability")
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["success"] is True
+    assert isinstance(data["data"]["open"], bool)
+    assert "cutoff_iso" in data["data"]
+
+
 def test_wish_submit_valid(client):
     """POST /api/wish with valid data should create a wish."""
     response = client.post(

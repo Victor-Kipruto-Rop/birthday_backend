@@ -3,10 +3,18 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-# The deadline is midnight at the end of 8 August 2026 in East Africa Time.
-SUBMISSION_CUTOFF = datetime(2026, 8, 9, 0, 0, tzinfo=ZoneInfo("Africa/Nairobi"))
+from config import Config
+
+DEFAULT_TIMEZONE = ZoneInfo("Africa/Nairobi")
+
+
+def submission_cutoff() -> datetime:
+    """Return the configured cutoff as a timezone-aware datetime."""
+    cutoff = datetime.fromisoformat(Config.SUBMISSION_CUTOFF_ISO)
+    return cutoff if cutoff.tzinfo else cutoff.replace(tzinfo=DEFAULT_TIMEZONE)
 
 
 def submissions_open() -> bool:
     """Return whether wishes and new gift payments may still be submitted."""
-    return datetime.now(SUBMISSION_CUTOFF.tzinfo) < SUBMISSION_CUTOFF
+    cutoff = submission_cutoff()
+    return datetime.now(cutoff.tzinfo) < cutoff

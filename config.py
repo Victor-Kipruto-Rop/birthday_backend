@@ -77,6 +77,12 @@ class Config:
     # If not set, falls back to in-memory (only works with single worker).
     REDIS_URL: str = _get_env("REDIS_URL", default="")
 
+    # --- Submission availability ------------------------------------------
+    # ISO-8601 timestamp with timezone, e.g. 2026-08-09T00:00:00+03:00.
+    SUBMISSION_CUTOFF_ISO: str = _get_env(
+        "SUBMISSION_CUTOFF_ISO", default="2026-08-09T00:00:00+03:00"
+    )
+
     @classmethod
     def validate(cls) -> list[str]:
         """

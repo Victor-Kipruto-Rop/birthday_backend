@@ -14,18 +14,18 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: "pip"
 
       - name: Install security tools
-        run: pip install bandit safety
+        run: pip install -r requirements.txt pip-audit
 
       - name: Run Bandit security scanner
         run: bandit -r app.py config.py routes/ services/ models/ utils/ -f json -o bandit-report.json
         continue-on-error: true
 
       - name: Check for vulnerable dependencies
-        run: safety check --json
+        run: pip-audit -r requirements.txt --format=json --output=pip-audit-report.json
         continue-on-error: true
