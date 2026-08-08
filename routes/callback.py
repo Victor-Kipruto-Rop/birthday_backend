@@ -22,7 +22,7 @@ body cannot change that outcome because we never act on it directly.
 from flask import Blueprint, request
 
 from models.storage import transaction_repository
-from services.payhero_service import PayHeroError, check_payment_status, finalize_transaction
+from services.payhero_service import PayHeroError, _provider_value, check_payment_status, finalize_transaction
 from utils.logger import get_logger
 from utils.responses import success
 
@@ -84,7 +84,7 @@ def payhero_callback():
     # authenticated request, rather than trusting the callback body.
     try:
         provider_status = check_payment_status(reference)
-        logger.info("✅ Verified status from Pay Hero: %s", provider_status.get("status"))
+        logger.info("✅ Verified status from Pay Hero: %s", _provider_value(provider_status, "status", "Status"))
     except PayHeroError as exc:
         logger.error("❌ Could not verify callback for %s via Pay Hero API: %s", reference, exc)
         # Do not finalize on an unverifiable callback. Pay Hero (or our

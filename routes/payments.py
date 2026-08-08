@@ -13,7 +13,13 @@ SECURITY NOTES:
 from flask import Blueprint, request
 
 from models.storage import transaction_repository
-from services.payhero_service import PayHeroError, check_payment_status, finalize_transaction, initiate_stk_push
+from services.payhero_service import (
+    PayHeroError,
+    _provider_value,
+    check_payment_status,
+    finalize_transaction,
+    initiate_stk_push,
+)
 from services.availability import submissions_open
 from services.validation import sanitize_text, validate_payment_payload
 from utils.helpers import format_phone_number
@@ -124,7 +130,7 @@ def get_payment_status(transaction_id: str):
     try:
         logger.info("🔄 Checking live status with Pay Hero...")
         provider_status = check_payment_status(transaction_id)
-        logger.info("Pay Hero status: %s", provider_status.get("status"))
+        logger.info("Pay Hero status: %s", _provider_value(provider_status, "status", "Status"))
     except PayHeroError as exc:
         logger.debug("Could not fetch live status from Pay Hero (will retry later): %s", exc)
         # Return current local status - callback will update it when it arrives

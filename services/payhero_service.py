@@ -43,7 +43,7 @@ def _normalize_url(base: str) -> str:
 
 def _normalize_status(raw_status: str) -> str:
     """Map Pay Hero's various status strings to one of: success, failed, pending."""
-    _SUCCESS_STATUSES = {"success", "completed", "paid", "0"}
+    _SUCCESS_STATUSES = {"success", "successful", "completed", "complete", "paid", "0", "true"}
     _FAILED_STATUSES = {"failed", "cancelled", "canceled", "declined", "error"}
     _PENDING_STATUSES = {"queued", "pending", "processing"}
     
@@ -56,6 +56,20 @@ def _normalize_status(raw_status: str) -> str:
         return "pending"
     logger.warning("Unrecognized Pay Hero status value: %r - treating as pending.", raw_status)
     return "pending"
+
+
+def _provider_value(payload: dict[str, Any], *keys: str) -> Any:
+    """Read provider fields from top-level, data, or response payloads."""
+    sources = [payload]
+    for container_key in ("data", "response", "result"):
+        nested = payload.get(container_key)
+        if isinstance(nested, dict):
+            sources.append(nested)
+    for source in sources:
+        for key in keys:
+            if source.get(key) is not None:
+                return source[key]
+    return None
 
 
 class PayHeroError(Exception):
@@ -233,7 +247,9 @@ def finalize_transaction(
     logger.info("🔄 [FINALIZE] Starting finalization for %s", transaction_ref)
     logger.info("🔄 [FINALIZE] Provider response: %s", provider_status)
     
-    raw_status = provider_status.get("status") or provider_status.get("Status")
+    raw_status = _provider_value(provider_status, "status", "Status", "payment_status", "PaymentStatus")
+    if raw_status is None and _provider_value(provider_status, "success", "Success") is True:
+        raw_status = "success"
     verified_status = _normalize_status(str(raw_status or ""))
     logger.info("🔄 [FINALIZE] Normalized status: %s (from: %s)", verified_status, raw_status)
     
@@ -249,10 +265,11 @@ def finalize_transaction(
             transaction_ref,
             verified_status,
             extra={
-                "provider_reference": provider_status.get("mpesa_receipt_number")
-                or provider_status.get("MpesaReceiptNumber")
-                or provider_status.get("provider_reference")
-                or provider_status.get("ProviderReference"),
+                "provider_reference": _provider_value(
+                    provider_status,
+                    "mpesa_receipt_number", "MpesaReceiptNumber",
+                    "provider_reference", "ProviderReference",
+                ),
                 "verified_provider_status": provider_status,
                 "finalized_at": current_timestamp(),
             },
