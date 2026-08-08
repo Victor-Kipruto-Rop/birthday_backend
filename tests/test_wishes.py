@@ -26,6 +26,12 @@ def test_availability_check(client):
     assert "cutoff_iso" in data["data"]
 
 
+def test_admin_wishes_requires_token(client):
+    """The wishes export must never be publicly accessible."""
+    response = client.get("/api/admin/wishes")
+    assert response.status_code == 401
+
+
 def test_wish_submit_valid(client):
     """POST /api/wish with valid data should create a wish."""
     response = client.post(

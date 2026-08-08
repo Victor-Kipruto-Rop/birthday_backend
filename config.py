@@ -78,6 +78,7 @@ class Config:
     # If set, rate limits are enforced across multiple workers/instances.
     # If not set, falls back to in-memory (only works with single worker).
     REDIS_URL: str = _get_env("REDIS_URL", default="")
+    ADMIN_TOKEN: str = _get_env("ADMIN_TOKEN", default="")
 
     # --- Submission availability ------------------------------------------
     # ISO-8601 timestamp with timezone, e.g. 2026-08-09T00:00:00+03:00.

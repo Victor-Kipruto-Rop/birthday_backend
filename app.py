@@ -18,7 +18,7 @@ from flask import Flask
 from flask_cors import CORS
 
 from config import Config
-from routes import health_bp, wishes_bp, payments_bp, callback_bp
+from routes import admin_bp, health_bp, wishes_bp, payments_bp, callback_bp
 from utils.limiter import limiter
 from utils.logger import get_logger
 from utils.responses import error as error_response
@@ -48,6 +48,7 @@ def create_app() -> Flask:
     app.register_blueprint(wishes_bp)
     app.register_blueprint(payments_bp)
     app.register_blueprint(callback_bp)
+    app.register_blueprint(admin_bp)
 
     @app.errorhandler(429)
     def handle_rate_limit(_exc):

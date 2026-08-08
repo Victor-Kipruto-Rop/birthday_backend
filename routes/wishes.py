@@ -6,6 +6,7 @@ validate it, persist it, and email a notification.
 """
 
 from flask import Blueprint, request
+from threading import Thread
 
 from models.storage import wish_repository
 from services.smtp_service import send_wish_email
@@ -18,6 +19,15 @@ from utils.responses import error, server_error, success, validation_error
 
 wishes_bp = Blueprint("wishes", __name__)
 logger = get_logger(__name__)
+
+
+def _send_wish_notification(name: str, phone: str, message: str) -> None:
+    """Send the notification without delaying the visitor response."""
+    try:
+        if not send_wish_email(name, phone, message):
+            logger.warning("Wish stored but notification email failed to send.")
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Wish notification failed after storage: %s", exc)
 
 
 @wishes_bp.route("/api/wish", methods=["POST"])
@@ -48,9 +58,11 @@ def submit_wish():
 
     # Email delivery failures should not fail the request - the wish is
     # already safely stored. We log it and let the response succeed.
-    email_sent = send_wish_email(name, phone, message)
-    if not email_sent:
-        logger.warning("Wish stored but notification email failed to send.")
+    Thread(
+        target=_send_wish_notification,
+        args=(name, phone, message),
+        daemon=True,
+    ).start()
 
     return success(
         message="Birthday wish sent successfully.",
