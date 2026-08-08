@@ -6,6 +6,16 @@ Tests for the /api/wish endpoint and related validation.
 
 import pytest
 
+from config import parse_frontend_origins
+
+
+def test_parse_frontend_origins_supports_csv():
+    """A comma-separated FRONTEND_URL should expand to multiple allowed origins."""
+    assert parse_frontend_origins("https://a.example, https://b.example") == [
+        "https://a.example",
+        "https://b.example",
+    ]
+
 
 def test_health_check(client):
     """GET /api/health should return healthy status."""

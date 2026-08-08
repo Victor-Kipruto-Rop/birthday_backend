@@ -37,6 +37,12 @@ def _get_env(name: str, default: str | None = None, required: bool = False) -> s
     return value
 
 
+def parse_frontend_origins(value: str) -> list[str]:
+    """Parse a comma-separated list of frontend origins for CORS."""
+    origins = [origin.strip() for origin in value.split(",") if origin.strip()]
+    return origins or ["http://localhost:3000"]
+
+
 class Config:
     """Application-wide configuration object."""
 
@@ -44,7 +50,11 @@ class Config:
     SECRET_KEY: str = _get_env("SECRET_KEY", default="dev-secret-key-change-me")
 
     # --- Frontend / CORS -----------------------------------------------------
-    FRONTEND_URL: str = _get_env("FRONTEND_URL", default="http://localhost:3000")
+    FRONTEND_URL: str = _get_env(
+        "FRONTEND_URL",
+        default="http://localhost:3000,https://birthday-frontend-gamma.vercel.app",
+    )
+    FRONTEND_URLS: list[str] = parse_frontend_origins(FRONTEND_URL)
 
     # --- SMTP / Email config -------------------------------------------------
     SMTP_SERVER: str = _get_env("SMTP_SERVER", default="smtp.gmail.com")

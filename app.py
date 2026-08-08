@@ -36,8 +36,8 @@ def create_app() -> Flask:
     for warning in warnings:
         logger.warning("Configuration warning: %s", warning)
 
-    # Restrict CORS to the configured frontend origin only.
-    CORS(app, resources={r"/api/*": {"origins": Config.FRONTEND_URL}})
+    # Restrict CORS to the configured frontend origins only.
+    CORS(app, resources={r"/api/*": {"origins": Config.FRONTEND_URLS}})
 
     # Attach the shared rate limiter (per-route limits are declared in
     # the route modules themselves via @limiter.limit(...)).
