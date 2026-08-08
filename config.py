@@ -14,8 +14,10 @@ will raise a clear error at startup instead of failing silently later.
 """
 
 import os
+import secrets
 from datetime import datetime
 from dotenv import load_dotenv
+from pathlib import Path
 from urllib.parse import urlparse
 
 # Load variables from a .env file if present (local development).
@@ -137,4 +139,30 @@ class Config:
             )
         
         return warnings
+
+    @classmethod
+    def _load_or_generate_admin_token(cls) -> str:
+        """Load an admin token from disk or generate one if none was provided."""
+        if cls.ADMIN_TOKEN:
+            return cls.ADMIN_TOKEN
+
+        token_file = Path(cls.DATA_DIR) / ".admin_token"
+        token_file.parent.mkdir(parents=True, exist_ok=True)
+
+        if token_file.exists():
+            token = token_file.read_text(encoding="utf-8").strip()
+            if token:
+                return token
+
+        token = secrets.token_urlsafe(32)
+        token_file.write_text(token, encoding="utf-8")
+        try:
+            token_file.chmod(0o600)
+        except OSError:
+            pass
+        return token
+
+
+# Ensure a secure admin token exists even when ADMIN_TOKEN is not configured.
+Config.ADMIN_TOKEN = Config._load_or_generate_admin_token()
 

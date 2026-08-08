@@ -21,6 +21,7 @@ os.environ["PAYHERO_PASSWORD"] = "test"
 os.environ["PAYHERO_CHANNEL_ID"] = "1"
 os.environ["PAYHERO_PROVIDER"] = "m-pesa"
 os.environ["PAYHERO_CALLBACK_URL"] = "http://localhost:5000/api/payhero/callback"
+os.environ["ADMIN_TOKEN"] = "test"
 os.environ["LOG_LEVEL"] = "ERROR"
 os.environ["DATA_DIR"] = ".test_data"
 os.environ["DATABASE_URL"] = ""  # Use JSON storage for tests

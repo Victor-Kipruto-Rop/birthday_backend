@@ -1,7 +1,7 @@
 """
 routes/contributions.py
 =======================
-Public API for retrieving live birthday contributions.
+Protected API for retrieving live birthday contributions.
 
 This endpoint returns wishes and successfully completed gift transactions
 from the application storage. It intentionally omits private fields like phone
@@ -9,10 +9,13 @@ numbers and transaction references so the page can display real contributors
 while preserving sender privacy.
 """
 
-from flask import Blueprint
+import hmac
 
+from flask import Blueprint, request
+
+from config import Config
 from models.storage import transaction_repository, wish_repository
-from utils.responses import success
+from utils.responses import error, success
 
 contributions_bp = Blueprint("contributions", __name__)
 
@@ -41,6 +44,10 @@ def _is_successful_gift(record: dict) -> bool:
 @contributions_bp.route("/api/contributions", methods=["GET"])
 def list_contributions():
     """Return the live wishes and completed gifts that have been recorded."""
+    supplied = request.headers.get("X-Admin-Token", "")
+    if not Config.ADMIN_TOKEN or not hmac.compare_digest(supplied, Config.ADMIN_TOKEN):
+        return error("Unauthorized.", status_code=401)
+
     wishes = [
         _safe_wish(record)
         for record in wish_repository.find_all()

@@ -48,7 +48,7 @@ def test_contributions_endpoint_returns_wishes_and_successful_gifts(client):
         )
     assert callback_response.status_code == 200
 
-    response = client.get("/api/contributions")
+    response = client.get("/api/contributions", headers={"X-Admin-Token": "test"})
     assert response.status_code == 200
     data = response.get_json()
     assert data["success"] is True
@@ -58,3 +58,11 @@ def test_contributions_endpoint_returns_wishes_and_successful_gifts(client):
     assert len(data["data"]["gifts"]) == 1
     assert data["data"]["wishes"][0]["name"] == "Alice"
     assert data["data"]["gifts"][0]["amount"] == 100
+
+
+def test_contributions_endpoint_rejects_unauthorized_access(client):
+    response = client.get("/api/contributions")
+    assert response.status_code == 401
+    data = response.get_json()
+    assert data["success"] is False
+    assert data["message"] == "Unauthorized."
