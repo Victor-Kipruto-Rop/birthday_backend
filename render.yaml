@@ -8,7 +8,7 @@ services:
     startCommand: gunicorn app:app --workers 1 --timeout 120
     envVars:
       - key: PYTHON_VERSION
-        value: 3.12
+        value: 3.12.3
       - key: SECRET_KEY
         sync: false
       - key: FRONTEND_URL

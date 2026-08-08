@@ -181,8 +181,9 @@ try:
     import psycopg2
     from psycopg2.extras import RealDictCursor
     _PSYCOPG2_AVAILABLE = True
-except ImportError:
+except ImportError as exc:
     _PSYCOPG2_AVAILABLE = False
+    logger.error("psycopg2 could not be imported: %s", exc)
 
 
 class PostgresRepository:
