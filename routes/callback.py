@@ -38,7 +38,12 @@ def _extract_reference(payload: dict) -> str | None:
     never to determine the outcome.
     """
     response = payload.get("response", payload)
-    return response.get("external_reference") or response.get("reference")
+    return (
+        response.get("external_reference")
+        or response.get("ExternalReference")
+        or response.get("reference")
+        or response.get("Reference")
+    )
 
 
 @callback_bp.route("/api/payhero/callback", methods=["POST"])

@@ -160,6 +160,27 @@ def test_callback_genuine_success(client, mock_payhero_initiate, mock_payhero_st
     assert transaction["status"] == "success"
 
 
+def test_callback_documented_payhero_field_names(client, mock_payhero_initiate, mock_payhero_status_success):
+    """Documented PayHero capitalized callback fields should be accepted."""
+    with patch("services.payhero_service._request", return_value=mock_payhero_initiate):
+        response = client.post(
+            "/api/payment",
+            json={"name": "Jane Doe", "phone": "0712345678", "amount": 500},
+        )
+    assert response.status_code == 202
+    ref = response.get_json()["data"]["reference"]
+
+    with patch("services.payhero_service._request_with_retry", return_value=mock_payhero_status_success):
+        response = client.post(
+            "/api/payhero/callback",
+            json={"response": {"ExternalReference": ref, "Status": "Success"}},
+        )
+
+    assert response.status_code == 200
+    transaction = client.get(f"/api/payment-status/{ref}").get_json()["data"]
+    assert transaction["status"] == "success"
+
+
 def test_callback_duplicate_ignored(client, mock_payhero_initiate, mock_payhero_status_success):
     """Duplicate callbacks for the same transaction should be idempotent."""
     # Create and finalize a transaction

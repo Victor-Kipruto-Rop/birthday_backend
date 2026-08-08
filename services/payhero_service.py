@@ -43,7 +43,7 @@ def _normalize_url(base: str) -> str:
 
 def _normalize_status(raw_status: str) -> str:
     """Map Pay Hero's various status strings to one of: success, failed, pending."""
-    _SUCCESS_STATUSES = {"success", "completed", "paid"}
+    _SUCCESS_STATUSES = {"success", "completed", "paid", "0"}
     _FAILED_STATUSES = {"failed", "cancelled", "canceled", "declined", "error"}
     _PENDING_STATUSES = {"queued", "pending", "processing"}
     
@@ -233,8 +233,9 @@ def finalize_transaction(
     logger.info("🔄 [FINALIZE] Starting finalization for %s", transaction_ref)
     logger.info("🔄 [FINALIZE] Provider response: %s", provider_status)
     
-    verified_status = _normalize_status(provider_status.get("status"))
-    logger.info("🔄 [FINALIZE] Normalized status: %s (from: %s)", verified_status, provider_status.get("status"))
+    raw_status = provider_status.get("status") or provider_status.get("Status")
+    verified_status = _normalize_status(str(raw_status or ""))
+    logger.info("🔄 [FINALIZE] Normalized status: %s (from: %s)", verified_status, raw_status)
     
     # Don't finalize if status is still pending
     if verified_status == "pending":
@@ -249,7 +250,9 @@ def finalize_transaction(
             verified_status,
             extra={
                 "provider_reference": provider_status.get("mpesa_receipt_number")
-                or provider_status.get("provider_reference"),
+                or provider_status.get("MpesaReceiptNumber")
+                or provider_status.get("provider_reference")
+                or provider_status.get("ProviderReference"),
                 "verified_provider_status": provider_status,
                 "finalized_at": current_timestamp(),
             },
