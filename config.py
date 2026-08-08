@@ -14,7 +14,9 @@ will raise a clear error at startup instead of failing silently later.
 """
 
 import os
+from datetime import datetime
 from dotenv import load_dotenv
+from urllib.parse import urlparse
 
 # Load variables from a .env file if present (local development).
 # In production (Render), environment variables are injected directly
@@ -97,6 +99,19 @@ class Config:
             warnings.append("SECRET_KEY is using the insecure default value.")
         if not cls.SMTP_EMAIL or not cls.SMTP_PASSWORD:
             warnings.append("SMTP_EMAIL / SMTP_PASSWORD not fully configured.")
+        try:
+            cutoff = datetime.fromisoformat(cls.SUBMISSION_CUTOFF_ISO)
+            if cutoff.tzinfo is None:
+                raise ValueError("timezone is missing")
+        except ValueError as exc:
+            raise RuntimeError(
+                "SUBMISSION_CUTOFF_ISO must be a timezone-aware ISO-8601 timestamp."
+            ) from exc
+        if not cls.PAYHERO_CHANNEL_ID.isdigit():
+            raise RuntimeError("PAYHERO_CHANNEL_ID must contain only digits.")
+        callback_url = urlparse(cls.PAYHERO_CALLBACK_URL)
+        if callback_url.scheme != "https" and callback_url.hostname not in {"localhost", "127.0.0.1"}:
+            raise RuntimeError("PAYHERO_CALLBACK_URL must use HTTPS in production.")
         
         # HARD FAILURES (app cannot boot without these)
         if not cls.PAYHERO_USERNAME:
