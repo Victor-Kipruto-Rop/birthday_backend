@@ -36,13 +36,18 @@ def _safe_transaction_data(record: dict) -> dict:
     Extract safe transaction data for API responses.
     Excludes sensitive fields like phone numbers and raw provider responses.
     """
-    return {
+    provider_status = record.get("verified_provider_status")
+    reason = _provider_value(provider_status, "status", "Status") if isinstance(provider_status, dict) else None
+    data = {
         "reference": record.get("reference"),
         "status": record.get("status"),
         "amount": record.get("amount"),
         "created_at": record.get("created_at"),
         "finalized_at": record.get("finalized_at"),
     }
+    if reason:
+        data["reason"] = str(reason).lower()
+    return data
 
 
 @payments_bp.route("/api/payment", methods=["POST"])
