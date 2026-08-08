@@ -26,6 +26,24 @@ def test_availability_check(client):
     assert "cutoff_iso" in data["data"]
 
 
+def test_health_page_renders(client):
+    """GET /health should return an HTML status page."""
+    response = client.get("/health")
+    assert response.status_code == 200
+    assert response.mimetype.startswith("text/html")
+    assert b"Health Check" in response.data
+    assert b"/api/health" in response.data
+
+
+def test_api_page_renders(client):
+    """GET /api should return the API landing page."""
+    response = client.get("/api")
+    assert response.status_code == 200
+    assert response.mimetype.startswith("text/html")
+    assert b"API Endpoints" in response.data
+    assert b"/api/health" in response.data
+
+
 def test_admin_wishes_requires_token(client):
     """The wishes export must never be publicly accessible."""
     response = client.get("/api/admin/wishes")
