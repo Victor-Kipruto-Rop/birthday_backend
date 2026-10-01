@@ -217,7 +217,7 @@ def test_cancelled_payment_exposes_cancellation_reason(client, mock_payhero_init
 
     assert response.status_code == 200
     transaction = client.get(f"/api/payment-status/{ref}").get_json()["data"]
-    assert transaction["status"] == "failed"
+    assert transaction["status"] == "cancelled"
     assert transaction["reason"] == "cancelled"
 
 

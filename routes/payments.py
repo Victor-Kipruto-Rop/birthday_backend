@@ -38,15 +38,32 @@ def _safe_transaction_data(record: dict) -> dict:
     """
     provider_status = record.get("verified_provider_status")
     reason = _provider_value(provider_status, "status", "Status") if isinstance(provider_status, dict) else None
+    normalized_reason = str(reason).lower() if reason is not None else None
+    status = record.get("status")
+    event_messages = {
+        "success": "Payment confirmed successfully. Thank you for your gift!",
+        "failed": "Payment failed. No gift payment was confirmed.",
+        "cancelled": "Payment cancelled. No money was sent.",
+        "pending": "Payment prompt sent. Waiting for M-Pesa confirmation.",
+    }
     data = {
         "reference": record.get("reference"),
-        "status": record.get("status"),
+        "status": status,
+        "event": f"payment.{status}" if status else "payment.unknown",
+        "status_message": event_messages.get(status, "Payment status is not yet confirmed."),
         "amount": record.get("amount"),
         "created_at": record.get("created_at"),
         "finalized_at": record.get("finalized_at"),
     }
     if reason:
-        data["reason"] = str(reason).lower()
+        data["reason"] = normalized_reason
+        data["provider_status"] = normalized_reason
+        if status == "failed":
+            data["status_message"] = f"Payment failed ({normalized_reason}). No gift payment was confirmed."
+        elif status == "cancelled":
+            data["status_message"] = f"Payment cancelled ({normalized_reason}). No money was sent."
+        elif status == "pending":
+            data["status_message"] = f"Payment event received: {normalized_reason}. Waiting for confirmation."
     return data
 
 

@@ -48,11 +48,22 @@ def _normalize_status(raw_status: str) -> str:
     _PENDING_STATUSES = {"queued", "pending", "processing"}
     
     status = (raw_status or "").strip().lower()
-    if status in _SUCCESS_STATUSES:
+    compact_status = status.replace("_", " ").replace("-", " ")
+    if status in _SUCCESS_STATUSES or any(
+        marker in compact_status for marker in ("success", "successful", "complete", "paid")
+    ):
         return "success"
-    if status in _FAILED_STATUSES:
+    if status in {"cancelled", "canceled"} or any(
+        marker in compact_status for marker in ("cancelled", "canceled")
+    ):
+        return "cancelled"
+    if status in _FAILED_STATUSES or any(
+        marker in compact_status for marker in ("failed", "declined", "error")
+    ):
         return "failed"
-    if status in _PENDING_STATUSES:
+    if status in _PENDING_STATUSES or any(
+        marker in compact_status for marker in ("pending", "process", "queued", "initiated", "await")
+    ):
         return "pending"
     logger.warning("Unrecognized Pay Hero status value: %r - treating as pending.", raw_status)
     return "pending"
