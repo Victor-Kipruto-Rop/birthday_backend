@@ -10,7 +10,6 @@ services:
     # "/" is not a reliable probe: it serves an optional static page that may
     # not exist in the deployed repo layout. /api/health always returns 200.
     healthCheckPath: /api/health
-    healthCheckPath: /api/health
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.3
