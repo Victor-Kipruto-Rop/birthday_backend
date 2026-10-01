@@ -1,20 +1,22 @@
 """Availability window for birthday wishes and gift payments."""
 
-from datetime import datetime
+from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
-
-from config import Config
 
 DEFAULT_TIMEZONE = ZoneInfo("Africa/Nairobi")
 
 
+def _now() -> datetime:
+    """Return the current time in the application's local timezone."""
+    return datetime.now(DEFAULT_TIMEZONE)
+
+
 def submission_cutoff() -> datetime:
-    """Return the configured cutoff as a timezone-aware datetime."""
-    cutoff = datetime.fromisoformat(Config.SUBMISSION_CUTOFF_ISO)
-    return cutoff if cutoff.tzinfo else cutoff.replace(tzinfo=DEFAULT_TIMEZONE)
+    """Return tomorrow's midnight as the end of today's submission window."""
+    tomorrow = _now().date() + timedelta(days=1)
+    return datetime.combine(tomorrow, time.min, tzinfo=DEFAULT_TIMEZONE)
 
 
 def submissions_open() -> bool:
-    """Return whether wishes and new gift payments may still be submitted."""
-    cutoff = submission_cutoff()
-    return datetime.now(cutoff.tzinfo) < cutoff
+    """Return whether today's midnight-to-midnight submission window is open."""
+    return _now() < submission_cutoff()
