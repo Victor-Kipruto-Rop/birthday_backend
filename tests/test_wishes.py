@@ -6,7 +6,8 @@ Tests for the /api/wish endpoint and related validation.
 
 import pytest
 
-from config import parse_frontend_origins
+from config import Config, parse_frontend_origins
+from services.availability import submissions_open
 
 
 def test_parse_frontend_origins_supports_csv():
@@ -26,14 +27,53 @@ def test_health_check(client):
     assert data["data"]["status"] == "healthy"
 
 
+def test_root_serves_pulsegate_page(client):
+    """GET / should serve the PulseGate landing page."""
+    response = client.get("/")
+    assert response.status_code == 200
+    assert response.mimetype == "text/html"
+    assert b"<h1>PulseGate</h1>" in response.data
+    assert b"SYSTEM ONLINE" in response.data
+
+
+def test_root_falls_back_to_bundled_pulsegate_page(client, monkeypatch):
+    """GET / should work when the frontend repository is deployed separately."""
+    import routes.health as health_routes
+
+    monkeypatch.setattr(health_routes, "_PULSEGATE_PAGE", health_routes.Path("missing-pulsegate.html"))
+    response = client.get("/")
+    assert response.status_code == 200
+    assert b"<h1>PulseGate</h1>" in response.data
+
+
 def test_availability_check(client):
-    """GET /api/availability should expose the configured cutoff."""
+    """GET /api/availability should expose the configured submission window."""
     response = client.get("/api/availability")
     assert response.status_code == 200
     data = response.get_json()
     assert data["success"] is True
     assert isinstance(data["data"]["open"], bool)
+    assert data["data"]["start_iso"] == Config.SUBMISSION_START_ISO
     assert "cutoff_iso" in data["data"]
+
+
+@pytest.mark.parametrize(
+    ("now", "expected"),
+    [
+        ("2026-09-30T23:59:59+03:00", False),
+        ("2026-10-01T00:00:00+03:00", True),
+        ("2026-10-01T20:02:45+03:00", True),
+        ("2026-10-02T23:59:59+03:00", True),
+        ("2026-10-03T00:00:00+03:00", False),
+    ],
+)
+def test_submission_window_boundaries(monkeypatch, now, expected):
+    """The window opens immediately and closes exclusively at Saturday midnight."""
+    from datetime import datetime
+
+    monkeypatch.setattr(Config, "SUBMISSION_START_ISO", "2026-10-01T00:00:00+03:00")
+    monkeypatch.setattr(Config, "SUBMISSION_CUTOFF_ISO", "2026-10-03T00:00:00+03:00")
+    assert submissions_open(datetime.fromisoformat(now)) is expected
 
 
 def test_health_page_renders(client):
@@ -75,6 +115,20 @@ def test_wish_submit_valid(client):
     assert data["success"] is True
     assert data["data"]["name"] == "Jane Doe"
     assert "created_at" in data["data"]
+
+
+def test_wish_submission_rejected_outside_window(client, monkeypatch):
+    """The API must reject a wish before the opening time, even if the UI is bypassed."""
+    monkeypatch.setattr(Config, "SUBMISSION_START_ISO", "2999-01-01T00:00:00+03:00")
+    response = client.post(
+        "/api/wish",
+        json={
+            "name": "Jane Doe",
+            "phone": "0712345678",
+            "message": "Happy birthday!",
+        },
+    )
+    assert response.status_code == 403
 
 
 def test_wish_missing_name(client):

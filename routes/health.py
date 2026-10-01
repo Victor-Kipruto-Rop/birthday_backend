@@ -5,12 +5,33 @@ GET /api/health - simple health check endpoint used by Render and any
 uptime monitors to verify the service is running.
 """
 
-from flask import Blueprint, Response
+from pathlib import Path
 
-from services.availability import submission_cutoff, submissions_open
+from flask import Blueprint, Response, send_file
+
+from services.availability import submission_cutoff, submission_start, submissions_open
 from utils.responses import success
 
 health_bp = Blueprint("health", __name__)
+_PULSEGATE_PAGE = (
+    Path(__file__).resolve().parents[2]
+    / "birthday_frontend-main"
+    / "pulsegate.html"
+)
+_BUNDLED_PULSEGATE_PAGE = Path(__file__).resolve().parents[1] / "pulsegate.html"
+
+
+@health_bp.route("/", methods=["GET"])
+def landing_page():
+    """Serve the PulseGate status page at the backend root."""
+    page = _PULSEGATE_PAGE if _PULSEGATE_PAGE.is_file() else _BUNDLED_PULSEGATE_PAGE
+    if not page.is_file():
+        return Response(
+            "PulseGate page is unavailable.",
+            status=503,
+            mimetype="text/plain",
+        )
+    return send_file(page, mimetype="text/html")
 
 
 @health_bp.route("/api/health", methods=["GET"])
@@ -26,6 +47,7 @@ def availability_check():
         message="Availability retrieved.",
         data={
             "open": submissions_open(),
+            "start_iso": submission_start().isoformat(),
             "cutoff_iso": submission_cutoff().isoformat(),
         },
     )

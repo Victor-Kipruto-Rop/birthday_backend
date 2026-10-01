@@ -7,6 +7,7 @@ endpoints, including callback forgery protection.
 
 import pytest
 from unittest.mock import MagicMock, patch
+from config import Config
 
 
 @pytest.fixture
@@ -51,6 +52,19 @@ def test_payment_submit_valid(client, mock_payhero_initiate):
     assert data["success"] is True
     assert "reference" in data["data"]
     assert data["data"]["amount"] == 500
+
+
+def test_payment_submission_rejected_outside_window(client, monkeypatch):
+    """The API must reject a gift before opening without contacting PayHero."""
+    monkeypatch.setattr(Config, "SUBMISSION_START_ISO", "2999-01-01T00:00:00+03:00")
+    with patch("services.payhero_service._request") as payhero_request:
+        response = client.post(
+            "/api/payment",
+            json={"name": "Jane Doe", "phone": "0712345678", "amount": 500},
+        )
+
+    assert response.status_code == 403
+    payhero_request.assert_not_called()
 
 
 def test_payment_missing_phone(client):

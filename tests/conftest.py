@@ -25,13 +25,23 @@ os.environ["ADMIN_TOKEN"] = "test"
 os.environ["LOG_LEVEL"] = "ERROR"
 os.environ["DATA_DIR"] = ".test_data"
 os.environ["DATABASE_URL"] = ""  # Use JSON storage for tests
+# Force in-memory rate-limit storage for tests. Without this, tests inherit
+# REDIS_URL from .env and share rate-limit counters with the running server
+# (and with production, if the same Redis is configured there). That makes the
+# suite order-dependent and lets a test run throttle real requests.
+os.environ["REDIS_URL"] = ""
 
 from app import create_app
 
 
 @pytest.fixture
-def app():
+def app(monkeypatch):
     """Create and configure a test instance of the app."""
+    from config import Config
+
+    monkeypatch.setattr(Config, "SUBMISSION_START_ISO", "2000-01-01T00:00:00+03:00")
+    monkeypatch.setattr(Config, "SUBMISSION_CUTOFF_ISO", "2999-01-01T00:00:00+03:00")
+    os.makedirs(".test_data", exist_ok=True)
     app_instance = create_app()
     app_instance.config["TESTING"] = True
 

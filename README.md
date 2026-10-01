@@ -76,6 +76,17 @@ birthday-backend/
 
 # API Endpoints
 
+## PulseGate Landing Page
+
+```
+GET /
+```
+
+Serves the PulseGate status page as the backend's root page. During local
+development it uses the sibling frontend copy when available; in a standalone
+Render deployment it falls back to the bundled `pulsegate.html` in this
+backend repository.
+
 ## Health Check
 
 ```
@@ -83,6 +94,19 @@ GET /api/health
 ```
 
 Returns server status.
+
+## Submission Availability
+
+```
+GET /api/availability
+```
+
+Returns the configured opening and closing timestamps and whether wishes and new
+gift payments are currently accepted. Configure `SUBMISSION_START_ISO` and
+`SUBMISSION_CUTOFF_ISO` as timezone-aware ISO-8601 timestamps. The current window
+is open immediately (starting Thursday, October 1, 2026 at 12:00 AM) and closes
+Saturday, October 3, 2026 at 12:00 AM East Africa Time. The opening instant is
+accepted; the closing instant is not.
 
 ---
 
@@ -165,6 +189,8 @@ PAYHERO_CHANNEL_ID=
 PAYHERO_CALLBACK_URL=
 
 LOG_LEVEL=INFO
+SUBMISSION_START_ISO=2026-10-01T00:00:00+03:00
+SUBMISSION_CUTOFF_ISO=2026-10-03T00:00:00+03:00
 ```
 
 ---

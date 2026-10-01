@@ -93,9 +93,12 @@ class Config:
     ADMIN_TOKEN: str = _get_env("ADMIN_TOKEN", default="")
 
     # --- Submission availability ------------------------------------------
-    # ISO-8601 timestamp with timezone, e.g. 2026-08-09T00:00:00+03:00.
+    # ISO-8601 timestamps with timezone (East Africa Time for this celebration).
+    SUBMISSION_START_ISO: str = _get_env(
+        "SUBMISSION_START_ISO", default="2026-10-01T00:00:00+03:00"
+    )
     SUBMISSION_CUTOFF_ISO: str = _get_env(
-        "SUBMISSION_CUTOFF_ISO", default="2026-08-09T00:00:00+03:00"
+        "SUBMISSION_CUTOFF_ISO", default="2026-10-03T00:00:00+03:00"
     )
 
     @classmethod
@@ -113,12 +116,18 @@ class Config:
         if not cls.SMTP_EMAIL or not cls.SMTP_PASSWORD:
             warnings.append("SMTP_EMAIL / SMTP_PASSWORD not fully configured.")
         try:
+            start = datetime.fromisoformat(cls.SUBMISSION_START_ISO)
+            if start.tzinfo is None:
+                raise ValueError("timezone is missing")
             cutoff = datetime.fromisoformat(cls.SUBMISSION_CUTOFF_ISO)
             if cutoff.tzinfo is None:
                 raise ValueError("timezone is missing")
+            if start >= cutoff:
+                raise ValueError("start must be before cutoff")
         except ValueError as exc:
             raise RuntimeError(
-                "SUBMISSION_CUTOFF_ISO must be a timezone-aware ISO-8601 timestamp."
+                "SUBMISSION_START_ISO and SUBMISSION_CUTOFF_ISO must be "
+                "timezone-aware ISO-8601 timestamps, with start before cutoff."
             ) from exc
         if not cls.PAYHERO_CHANNEL_ID.isdigit():
             raise RuntimeError("PAYHERO_CHANNEL_ID must contain only digits.")
@@ -175,4 +184,3 @@ class Config:
 
 # Ensure a secure admin token exists even when ADMIN_TOKEN is not configured.
 Config.ADMIN_TOKEN = Config._load_or_generate_admin_token()
-

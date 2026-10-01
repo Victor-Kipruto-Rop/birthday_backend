@@ -5,7 +5,12 @@ services:
     pythonVersion: 3.12
     plan: free
     buildCommand: bash build.sh
-    startCommand: gunicorn app:app --workers 1 --timeout 120
+    # Must bind 0.0.0.0:$PORT - Render routes traffic to the $PORT env var.
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --timeout 120
+    # "/" is not a reliable probe: it serves an optional static page that may
+    # not exist in the deployed repo layout. /api/health always returns 200.
+    healthCheckPath: /api/health
+    healthCheckPath: /api/health
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.3
@@ -39,7 +44,9 @@ services:
         sync: false
       - key: REDIS_URL
         sync: false
+      - key: SUBMISSION_START_ISO
+        value: "2026-10-01T00:00:00+03:00"
       - key: SUBMISSION_CUTOFF_ISO
-        value: 2099-12-31T23:59:59+03:00
+        value: "2026-10-03T00:00:00+03:00"
       - key: ADMIN_TOKEN
         sync: false
