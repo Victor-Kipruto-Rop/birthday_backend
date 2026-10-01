@@ -103,6 +103,7 @@ def initiate_payment():
     try:
         transaction_repository.add({
             "reference": result["reference"],
+            "provider_reference": result.get("provider_reference"),
             "name": name,
             "phone": phone,
             "amount": amount,
@@ -162,7 +163,10 @@ def get_payment_status(transaction_id: str):
     # Try to fetch live status from Pay Hero (single attempt, no retries)
     try:
         logger.info("🔄 Checking live status with Pay Hero...")
-        provider_status = check_payment_status(transaction_id)
+        provider_status = check_payment_status(
+            transaction_id,
+            provider_reference=local_record.get("provider_reference"),
+        )
         logger.info("Pay Hero status: %s", _provider_value(provider_status, "status", "Status"))
     except PayHeroError as exc:
         logger.debug("Could not fetch live status from Pay Hero (will retry later): %s", exc)

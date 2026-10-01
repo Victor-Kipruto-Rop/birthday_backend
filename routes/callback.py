@@ -69,22 +69,45 @@ def payhero_callback():
 
     local_record = transaction_repository.find_by_reference(reference)
     if not local_record:
+        local_record = next(
+            (
+                record
+                for record in transaction_repository.find_all()
+                if record.get("provider_reference") == reference
+            ),
+            None,
+        )
+    if not local_record:
         logger.warning("Callback for unknown transaction reference: %s", reference)
         return success(message="Callback received.", status_code=200)
 
-    logger.info("Local record found for %s - Current status: %s", reference, local_record.get("status"))
+    transaction_reference = local_record.get("reference", reference)
+    logger.info(
+        "Local record found for %s - Current status: %s",
+        transaction_reference,
+        local_record.get("status"),
+    )
 
     # Idempotency guard: if we've already processed a terminal status for
     # this transaction, do not re-send emails or re-process the callback.
     if local_record.get("status") in ("success", "failed"):
-        logger.info("Duplicate callback for already-finalized transaction %s - ignoring.", reference)
+        logger.info(
+            "Duplicate callback for already-finalized transaction %s - ignoring.",
+            transaction_reference,
+        )
         return success(message="Callback already processed.", status_code=200)
 
     # Re-verify the real outcome directly with Pay Hero using our own
     # authenticated request, rather than trusting the callback body.
     try:
-        provider_status = check_payment_status(reference)
-        logger.info("✅ Verified status from Pay Hero: %s", _provider_value(provider_status, "status", "Status"))
+        provider_status = check_payment_status(
+            transaction_reference,
+            provider_reference=local_record.get("provider_reference"),
+        )
+        logger.info(
+            "✅ Verified status from Pay Hero: %s",
+            _provider_value(provider_status, "status", "Status"),
+        )
     except PayHeroError as exc:
         logger.error("❌ Could not verify callback for %s via Pay Hero API: %s", reference, exc)
         # Do not finalize on an unverifiable callback. Pay Hero (or our
@@ -93,8 +116,12 @@ def payhero_callback():
         return success(message="Callback received, verification pending.", status_code=200)
 
     # Use shared finalization logic (same as polling path)
-    logger.info("🔄 Finalizing transaction %s with provider status: %s", reference, provider_status)
-    finalize_transaction(reference, local_record, provider_status)
+    logger.info(
+        "🔄 Finalizing transaction %s with provider status: %s",
+        transaction_reference,
+        provider_status,
+    )
+    finalize_transaction(transaction_reference, local_record, provider_status)
     
-    logger.info("✅ Transaction %s finalized successfully", reference)
+    logger.info("✅ Transaction %s finalized successfully", transaction_reference)
     return success(message="Callback processed successfully.", status_code=200)

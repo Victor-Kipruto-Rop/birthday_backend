@@ -55,6 +55,30 @@ def test_payment_submit_valid(client, mock_payhero_initiate):
     assert data["data"]["event"] == "STK_SENT"
 
 
+def test_payment_status_uses_provider_reference(client):
+    """Status polling must query PayHero with its returned transaction ID."""
+    initiated = MagicMock()
+    initiated.status_code = 201
+    initiated.content = b'{"reference":"PAYHERO-123"}'
+    initiated.json.return_value = {"reference": "PAYHERO-123"}
+    status = MagicMock()
+    status.status_code = 200
+    status.content = b'{"status":"PROCESSING"}'
+    status.json.return_value = {"status": "PROCESSING"}
+
+    with patch("services.payhero_service._request", return_value=initiated):
+        response = client.post(
+            "/api/payment",
+            json={"name": "Jane Doe", "phone": "0712345678", "amount": 500},
+        )
+    reference = response.get_json()["data"]["reference"]
+
+    with patch("services.payhero_service._request_with_retry", return_value=status) as request:
+        client.get(f"/api/payment-status/{reference}")
+
+    assert request.call_args.kwargs["params"] == {"reference": "PAYHERO-123"}
+
+
 def test_payment_status_maps_provider_result_codes(client, mock_payhero_initiate):
     """Provider result codes become stable frontend events and messages."""
     processing = MagicMock()

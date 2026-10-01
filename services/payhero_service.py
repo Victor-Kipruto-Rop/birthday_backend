@@ -229,17 +229,31 @@ def initiate_stk_push(phone: str, amount: float, reference: Optional[str] = None
         )
 
     data = response.json() if response.content else {}
+    provider_reference = _provider_value(
+        data,
+        "reference",
+        "Reference",
+        "transaction_id",
+        "transactionId",
+        "payment_id",
+        "paymentId",
+        "checkout_request_id",
+        "CheckoutRequestID",
+    )
     logger.info("STK Push initiated successfully. Reference: %s", reference)
 
     return {
         "reference": reference,
+        "provider_reference": str(provider_reference) if provider_reference else None,
         "phone": phone,
         "amount": amount,
         "provider_response": data,
     }
 
 
-def check_payment_status(transaction_id: str) -> dict[str, Any]:
+def check_payment_status(
+    transaction_id: str, provider_reference: Optional[str] = None
+) -> dict[str, Any]:
     """
     Check the status of a previously initiated payment.
 
@@ -247,7 +261,7 @@ def check_payment_status(transaction_id: str) -> dict[str, Any]:
     """
     base_url = _normalize_url(Config.PAYHERO_BASE_URL)
     url = f"{base_url}/transaction-status"
-    params = {"reference": transaction_id}
+    params = {"reference": provider_reference or transaction_id}
 
     response = _request_with_retry(
         "GET", url, params=params, headers=_get_auth_header(),
@@ -257,7 +271,7 @@ def check_payment_status(transaction_id: str) -> dict[str, Any]:
     if response.status_code != 200:
         logger.error(
             "Payment status check failed for %s: %s - %s",
-            transaction_id, response.status_code, response.text,
+            provider_reference or transaction_id, response.status_code, response.text,
         )
         raise PayHeroError(
             f"Failed to check payment status (status {response.status_code})",
