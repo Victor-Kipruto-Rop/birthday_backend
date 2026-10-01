@@ -35,6 +35,12 @@ _STATUS_REQUEST_TIMEOUT = 3  # Keep each verification attempt short for responsi
 # validation/auth errors which will never succeed on retry.
 _RETRYABLE_STATUS_CODES = {500, 502, 503, 504}
 
+_RESULT_EVENTS = {
+    "1032": ("CANCELLED", "Payment was cancelled."),
+    "1": ("INSUFFICIENT_FUNDS", "The payment could not be completed due to insufficient funds."),
+    "2001": ("INVALID_PIN", "The payment could not be completed. Please try again."),
+}
+
 
 def _normalize_url(base: str) -> str:
     """Strip trailing slashes to prevent double slashes in URL concatenation."""
@@ -81,6 +87,29 @@ def _provider_value(payload: dict[str, Any], *keys: str) -> Any:
             if source.get(key) is not None:
                 return source[key]
     return None
+
+
+def provider_event(provider_status: dict[str, Any]) -> tuple[str, str, str]:
+    """Map Pay Hero/Daraja fields to a stable frontend event and message."""
+    result_code = _provider_value(
+        provider_status, "result_code", "ResultCode", "resultCode", "response_code", "ResponseCode"
+    )
+    code_event = _RESULT_EVENTS.get(str(result_code)) if result_code is not None else None
+    raw_status = _provider_value(
+        provider_status, "status", "Status", "payment_status", "PaymentStatus"
+    )
+    normalized = _normalize_status(str(raw_status or ""))
+    if code_event:
+        return code_event[0], code_event[1], normalized
+    if normalized == "success":
+        return "SUCCESS", "Gift sent successfully. Thank you!", normalized
+    if normalized == "cancelled":
+        return "CANCELLED", "Payment was cancelled.", normalized
+    if normalized == "failed":
+        return "FAILED", "We couldn't complete the payment. Please try again.", normalized
+    if normalized == "pending":
+        return "PROCESSING", "We're confirming your payment...", normalized
+    return "UNKNOWN", "We couldn't confirm the payment. Please check your M-Pesa messages.", normalized
 
 
 class PayHeroError(Exception):
@@ -261,12 +290,17 @@ def finalize_transaction(
     raw_status = _provider_value(provider_status, "status", "Status", "payment_status", "PaymentStatus")
     if raw_status is None and _provider_value(provider_status, "success", "Success") is True:
         raw_status = "success"
-    verified_status = _normalize_status(str(raw_status or ""))
+    event, _message, verified_status = provider_event(provider_status)
     logger.info("🔄 [FINALIZE] Normalized status: %s (from: %s)", verified_status, raw_status)
     
     # Don't finalize if status is still pending
     if verified_status == "pending":
-        logger.info("🔄 [FINALIZE] Status is still pending, skipping finalization")
+        transaction_repository.update_status(
+            transaction_ref,
+            "pending",
+            extra={"event": "PROCESSING", "verified_provider_status": provider_status},
+        )
+        logger.info("🔄 [FINALIZE] Status is still pending, retaining PROCESSING event")
         return
     
     try:
@@ -282,6 +316,7 @@ def finalize_transaction(
                     "provider_reference", "ProviderReference",
                 ),
                 "verified_provider_status": provider_status,
+                "event": event,
                 "finalized_at": current_timestamp(),
             },
         )

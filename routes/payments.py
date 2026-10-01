@@ -19,6 +19,7 @@ from services.payhero_service import (
     check_payment_status,
     finalize_transaction,
     initiate_stk_push,
+    provider_event,
 )
 from services.availability import submissions_open
 from services.validation import sanitize_text, validate_payment_payload
@@ -40,17 +41,26 @@ def _safe_transaction_data(record: dict) -> dict:
     reason = _provider_value(provider_status, "status", "Status") if isinstance(provider_status, dict) else None
     normalized_reason = str(reason).lower() if reason is not None else None
     status = record.get("status")
-    event_messages = {
-        "success": "Payment confirmed successfully. Thank you for your gift!",
-        "failed": "Payment failed. No gift payment was confirmed.",
-        "cancelled": "Payment cancelled. No money was sent.",
-        "pending": "Payment prompt sent. Waiting for M-Pesa confirmation.",
-    }
+    event = record.get("event", "PROCESSING")
+    event_message = {
+        "CREATED": "Preparing your birthday gift...",
+        "STK_REQUESTED": "Sending payment request to your phone...",
+        "STK_SENT": "Check your phone for the M-Pesa prompt.",
+        "AWAITING_PIN": "Enter your M-Pesa PIN to complete the gift.",
+        "PROCESSING": "We're confirming your payment...",
+        "SUCCESS": "Gift sent successfully. Thank you!",
+        "CANCELLED": "Payment was cancelled.",
+        "INSUFFICIENT_FUNDS": "The payment could not be completed due to insufficient funds.",
+        "INVALID_PIN": "The payment could not be completed. Please try again.",
+        "FAILED": "We couldn't complete the payment. Please try again.",
+        "TIMEOUT": "The payment request timed out. Please try again.",
+        "UNKNOWN": "We couldn't confirm the payment. Please check your M-Pesa messages.",
+    }.get(event, "We're confirming your payment...")
     data = {
         "reference": record.get("reference"),
         "status": status,
-        "event": f"payment.{status}" if status else "payment.unknown",
-        "status_message": event_messages.get(status, "Payment status is not yet confirmed."),
+        "event": event,
+        "status_message": event_message,
         "amount": record.get("amount"),
         "created_at": record.get("created_at"),
         "finalized_at": record.get("finalized_at"),
@@ -58,12 +68,10 @@ def _safe_transaction_data(record: dict) -> dict:
     if reason:
         data["reason"] = normalized_reason
         data["provider_status"] = normalized_reason
-        if status == "failed":
-            data["status_message"] = f"Payment failed ({normalized_reason}). No gift payment was confirmed."
-        elif status == "cancelled":
-            data["status_message"] = f"Payment cancelled ({normalized_reason}). No money was sent."
-        elif status == "pending":
-            data["status_message"] = f"Payment event received: {normalized_reason}. Waiting for confirmation."
+    if isinstance(provider_status, dict):
+        provider_event_name, provider_message, _ = provider_event(provider_status)
+        data["event"] = record.get("event", provider_event_name)
+        data["status_message"] = provider_message if event == "PROCESSING" else event_message
     return data
 
 
@@ -99,6 +107,7 @@ def initiate_payment():
             "phone": phone,
             "amount": amount,
             "status": "pending",
+            "event": "CREATED",
         })
     except Exception as exc:  # noqa: BLE001
         logger.error("Failed to persist transaction record: %s", exc)
@@ -109,6 +118,8 @@ def initiate_payment():
         message="Payment initiated. Please check your phone to complete the transaction.",
         data={
             "reference": result["reference"],
+            "event": "STK_SENT",
+            "status_message": "Check your phone for the M-Pesa prompt.",
             # NOTE: NOT returning phone number (privacy protection)
             "amount": amount,
         },
@@ -144,7 +155,7 @@ def get_payment_status(transaction_id: str):
 
     # If we already have a final status recorded (via the callback),
     # return it directly without hitting Pay Hero again.
-    if local_record.get("status") in ("success", "failed"):
+    if local_record.get("status") in ("success", "failed", "cancelled"):
         logger.info("✅ Returning cached terminal status: %s", local_record.get("status"))
         return success(message="Payment status retrieved.", data=_safe_transaction_data(local_record))
 

@@ -52,6 +52,28 @@ def test_payment_submit_valid(client, mock_payhero_initiate):
     assert data["success"] is True
     assert "reference" in data["data"]
     assert data["data"]["amount"] == 500
+    assert data["data"]["event"] == "STK_SENT"
+
+
+def test_payment_status_maps_provider_result_codes(client, mock_payhero_initiate):
+    """Provider result codes become stable frontend events and messages."""
+    processing = MagicMock()
+    processing.status_code = 200
+    processing.content = b'{"status":"PROCESSING"}'
+    processing.json.return_value = {"status": "PROCESSING"}
+
+    with patch("services.payhero_service._request", return_value=mock_payhero_initiate):
+        reference = client.post(
+            "/api/payment",
+            json={"name": "Jane Doe", "phone": "0712345678", "amount": 500},
+        ).get_json()["data"]["reference"]
+
+    with patch("services.payhero_service._request_with_retry", return_value=processing):
+        data = client.get(f"/api/payment-status/{reference}").get_json()["data"]
+
+    assert data["event"] == "PROCESSING"
+    assert data["status"] == "pending"
+    assert data["status_message"] == "We're confirming your payment..."
 
 
 def test_payment_submission_rejected_outside_window(client, monkeypatch):
