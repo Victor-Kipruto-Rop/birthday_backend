@@ -1,5 +1,10 @@
 # Environment
 .env
+.env.*
+!.env.example
+
+# Generated admin token fallback (normally inside DATA_DIR)
+.admin_token
 
 # Python
 __pycache__/
