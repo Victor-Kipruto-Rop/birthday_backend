@@ -282,7 +282,8 @@ The `render.yaml` file specifies:
    - `SECRET_KEY` (generate a secure random string)
    - `FRONTEND_URL` (your Vercel frontend URL)
    - `DATABASE_URL` (PostgreSQL connection string, if using PostgreSQL)
-   - `REDIS_URL` (Redis connection string, if scaling to multiple workers)
+   - `REDIS_URL` (Redis connection string, if scaling to multiple workers; use
+     `redis://...` or `rediss://...`, not the `redis-cli -u` command)
    - SMTP credentials (for email)
    - Pay Hero credentials
 7. Deploy

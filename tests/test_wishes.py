@@ -6,7 +6,7 @@ Tests for the /api/wish endpoint and related validation.
 
 import pytest
 
-from config import Config, parse_frontend_origins
+from config import Config, normalize_redis_url, parse_frontend_origins
 from services.availability import submissions_open
 
 
@@ -16,6 +16,19 @@ def test_parse_frontend_origins_supports_csv():
         "https://a.example",
         "https://b.example",
     ]
+
+
+def test_normalize_redis_url_accepts_redis_cli_output():
+    """A copied redis-cli command should be normalized to its connection URI."""
+    assert normalize_redis_url("redis-cli -u redis://localhost:6379/0") == (
+        "redis://localhost:6379/0"
+    )
+
+
+def test_normalize_redis_url_rejects_non_redis_values():
+    """Invalid Redis configuration should fail with an actionable message."""
+    with pytest.raises(RuntimeError, match="REDIS_URL must be a Redis URI"):
+        normalize_redis_url("redis-cli --tls")
 
 
 def test_health_check(client):

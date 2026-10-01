@@ -15,6 +15,7 @@ will raise a clear error at startup instead of failing silently later.
 
 import os
 import secrets
+import shlex
 from datetime import datetime
 from dotenv import load_dotenv
 from pathlib import Path
@@ -41,6 +42,32 @@ def parse_frontend_origins(value: str) -> list[str]:
     """Parse a comma-separated list of frontend origins for CORS."""
     origins = [origin.strip() for origin in value.split(",") if origin.strip()]
     return origins or ["http://localhost:3000"]
+
+
+def normalize_redis_url(value: str) -> str:
+    """Return a Redis URI, accepting a mistakenly pasted redis-cli command."""
+    candidate = value.strip()
+    if not candidate:
+        return ""
+
+    if candidate.startswith("redis-cli "):
+        tokens = shlex.split(candidate)
+        try:
+            uri_index = tokens.index("-u") + 1
+            candidate = tokens[uri_index]
+        except (ValueError, IndexError) as exc:
+            raise RuntimeError(
+                "REDIS_URL must be a Redis URI such as redis://host:6379/0, "
+                "not an incomplete redis-cli command."
+            ) from exc
+
+    parsed = urlparse(candidate)
+    if parsed.scheme not in {"redis", "rediss"} or not parsed.netloc:
+        raise RuntimeError(
+            "REDIS_URL must be a Redis URI such as redis://host:6379/0. "
+            "Do not include the 'redis-cli -u' command wrapper."
+        )
+    return candidate
 
 
 class Config:
@@ -89,7 +116,7 @@ class Config:
     # Redis URL for distributed rate limiting, e.g. redis://localhost:6379/0
     # If set, rate limits are enforced across multiple workers/instances.
     # If not set, falls back to in-memory (only works with single worker).
-    REDIS_URL: str = _get_env("REDIS_URL", default="")
+    REDIS_URL: str = normalize_redis_url(_get_env("REDIS_URL", default=""))
     ADMIN_TOKEN: str = _get_env("ADMIN_TOKEN", default="")
 
     # --- Submission availability ------------------------------------------
